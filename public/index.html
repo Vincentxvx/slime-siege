@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slime Siege</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Lexend:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 26C3 10 29 10 28 26Z' fill='%239be15d' stroke='%231c1230' stroke-width='2'/%3E%3Ccircle cx='12' cy='19' r='2.5' fill='%231c1230'/%3E%3Ccircle cx='20' cy='19' r='2.5' fill='%231c1230'/%3E%3C/svg%3E">
+</head>
+<body>
+  <!-- ============ AUTH ============ -->
+  <section id="screen-auth" class="screen">
+    <div class="auth-wrap">
+      <h1 class="logo"><span>Slime</span><span>Siege</span></h1>
+      <p class="tagline">Defend your lane. Flood theirs.</p>
+      <form id="auth-form" class="panel auth" autocomplete="on">
+        <label>Username <input id="auth-user" name="username" autocomplete="username" maxlength="16" required></label>
+        <label>Password <input id="auth-pass" name="password" type="password" autocomplete="current-password" minlength="6" required></label>
+        <p id="auth-error" class="error" role="alert"></p>
+        <div class="row">
+          <button class="btn primary" type="submit" data-mode="login">Log in</button>
+          <button class="btn" type="submit" data-mode="register">Create account</button>
+        </div>
+        <p class="muted small">Your progress is saved on the server, so you can log in from any computer.</p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ LOBBY ============ -->
+  <section id="screen-lobby" class="screen" hidden>
+    <header class="topbar">
+      <h1 class="logo small"><span>Slime</span><span>Siege</span></h1>
+      <div class="topbar-right">
+        <span class="online" id="online">Connecting…</span>
+        <span class="coins" title="Coins"><i class="coin"></i><b id="coins">0</b></span>
+        <button class="btn ghost" data-mute aria-pressed="true">Sound on</button>
+        <button class="btn ghost" id="btn-logout">Log out</button>
+      </div>
+    </header>
+
+    <div class="lobby-grid">
+      <div class="panel profile">
+        <div class="plate big" id="profile-plate"></div>
+        <div class="xp"><div class="xp-bar"><div id="xp-fill"></div></div><span id="xp-text"></span></div>
+        <dl class="stats" id="profile-stats"></dl>
+        <p class="daily" id="daily" hidden>First win today gives +50 bonus coins.</p>
+        <details class="history-box" open>
+          <summary>Recent matches</summary>
+          <ol class="history" id="history"></ol>
+        </details>
+      </div>
+
+      <div class="panel play">
+        <button class="btn primary huge" id="btn-queue">Find a match</button>
+        <p class="muted small center" id="queue-text">Play a random opponent who is online.</p>
+        <div class="play-row">
+          <div class="play-block">
+            <h3>Practice against a bot</h3>
+            <div class="seg" id="bot-diff" role="group" aria-label="Bot difficulty">
+              <button data-d="easy">Easy</button><button data-d="normal" class="on">Normal</button><button data-d="hard">Hard</button>
+            </div>
+            <button class="btn" id="btn-bot">Play bot</button>
+          </div>
+          <div class="play-block">
+            <h3>Play a friend</h3>
+            <div id="room-host"><button class="btn" id="btn-room">Create room code</button></div>
+            <form id="room-join" class="join"><input id="room-code" placeholder="Code" maxlength="4" aria-label="Room code"><button class="btn" type="submit">Join</button></form>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel shop">
+        <nav class="tabs" role="tablist">
+          <button data-tab="howto">How to play</button>
+          <button data-tab="towers" class="on">Towers</button>
+          <button data-tab="skins">Tower skins</button>
+          <button data-tab="banners">Banners</button>
+          <button data-tab="leaders">Leaderboard</button>
+        </nav>
+        <div id="shop-body" class="shop-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section id="screen-game" class="screen" hidden>
+    <div class="hud">
+      <div class="hud-side">
+        <div class="plate" id="hud-me-plate"></div>
+        <div class="stat"><i class="heart"></i><b id="hud-lives">100</b></div>
+        <div class="stat"><i class="coin"></i><b id="hud-gold">0</b></div>
+        <div class="stat income" title="Income paid every 6 seconds"><span>+<b id="hud-income">0</b></span><div class="ibar"><div id="hud-income-bar"></div></div></div>
+      </div>
+      <div class="hud-center"><div class="round">Round <b id="hud-round">1</b></div><div class="next" id="hud-next"></div><div class="hud-btns"><button class="btn ghost forfeit" id="btn-chat" aria-expanded="false">Chat</button><button class="btn ghost forfeit" data-mute aria-pressed="true">Sound on</button><button class="btn ghost forfeit" id="btn-forfeit">Forfeit</button></div><div class="emote-row" id="emote-row" aria-label="Quick chat" hidden></div></div>
+      <div class="hud-side right">
+        <div class="stat"><i class="heart"></i><b id="hud-op-lives">100</b></div>
+        <div class="stat" title="Opponent income"><span>+<b id="hud-op-income">0</b></span></div>
+        <div class="plate" id="hud-op-plate"></div>
+      </div>
+    </div>
+
+    <div class="arena">
+      <div id="tower-bar" class="tower-bar" aria-label="Towers"></div>
+      <div class="main-wrap">
+        <canvas id="cv-main"></canvas>
+        <div id="countdown" class="overlay big" hidden></div>
+        <div class="bubble me" id="bubble-me" hidden></div>
+        <div class="next-wave" id="next-wave" title="Slimes in the next natural wave"></div>
+        <div id="toasts" class="toasts" aria-live="polite"></div>
+      </div>
+      <aside class="side">
+        <div class="opp-view"><canvas id="cv-opp"></canvas><div class="bubble op" id="bubble-op" hidden></div></div>
+        <div class="sends panel">
+          <h3>Send slimes <small>+income per send</small></h3>
+          <div id="send-grid" class="send-grid"></div>
+        </div>
+        <div id="tower-panel" class="panel tower-panel"></div>
+      </aside>
+    </div>
+
+    <div id="end-overlay" class="end" hidden>
+      <div class="panel end-card">
+        <h2 id="end-title">Victory</h2>
+        <p id="end-reason"></p>
+        <div id="end-rewards" class="rewards"></div>
+        <p id="end-rematch" class="muted small" hidden></p>
+        <div class="row end-actions">
+          <button class="btn primary" id="end-again">Play again</button>
+          <button class="btn" id="end-back">Back to lobby</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="lobby-toasts" class="toasts global" aria-live="polite"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared/data.js"></script>
+  <script src="sfx.js"></script>
+  <script src="render.js"></script>
+  <script src="game.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

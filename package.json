@@ -1,0 +1,24 @@
+{
+  "name": "slime-siege",
+  "version": "1.0.0",
+  "private": true,
+  "description": "1v1 online tower defense with server-saved accounts",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "sim": "node tools/sim.js",
+    "test:e2e": "node tools/e2e.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

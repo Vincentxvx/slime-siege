@@ -1,0 +1,17 @@
+# One-click setup on Render (render.com → New → Blueprint → pick this repo).
+# You'll be asked for DATABASE_URL (paste the Neon connection string).
+services:
+  - type: web
+    name: slime-siege
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
