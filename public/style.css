@@ -309,6 +309,7 @@ input {
 .next-up b { font-size: 13px; }
 .next-up small { color: var(--muted); font-size: 12px; }
 .next-up.maxed b { color: var(--gold); }
+.next-up .btn.up { min-width: 114px; font-variant-numeric: tabular-nums; } /* steady width while "Need X more" counts down */
 .next-up .btn.up { flex-shrink: 0; }
 
 .wl .rating { color: var(--gold); margin-right: 8px; }
