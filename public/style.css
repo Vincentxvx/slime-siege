@@ -375,3 +375,28 @@ input {
 .idea-list .empty { padding: 10px 0; }
 .tag.idea { color: var(--lime); }
 @media (max-width: 560px) { .idea { grid-template-columns: auto 1fr; } .idea-side { grid-column: 2; } .idea-form { flex-direction: column; } }
+
+/* ---------- friends ---------- */
+.friends-box { background: var(--ink); border-radius: 12px; padding: 14px; display: grid; gap: 10px; margin-top: 4px; }
+.fb-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fb-head .join { width: auto; }
+.fb-head .join input { width: 12em; letter-spacing: 0; text-transform: none; font-weight: 400; }
+.friend-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 210px; overflow: auto; }
+.friend-list li { display: grid; grid-template-columns: 10px 1fr auto auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--ink-2); }
+.friend-list li.empty { display: block; background: none; padding: 2px 0; font-size: 13px; }
+.friend-list .fname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-list small { color: var(--muted); font-size: 12px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #5e5577; }
+.st-online .dot { background: var(--lime); box-shadow: 0 0 6px var(--lime); }
+.st-playing .dot { background: var(--gold); }
+.st-pending .dot { background: transparent; border: 2px dashed var(--muted); }
+.st-online small { color: var(--lime); }
+.st-playing small { color: var(--gold); }
+.small-btn { padding: 3px 10px; font-size: 13px; box-shadow: 0 2px 0 var(--line); }
+.fx { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
+.fx:hover, .fx.armed { color: var(--red); font-size: 13px; font-weight: 700; }
+.freq { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--ink-3); border-radius: 8px; padding: 6px 8px; font-size: 14px; }
+.freq span { flex: 1; }
+.invite-card { position: fixed; right: 20px; bottom: 20px; z-index: 30; width: min(330px, calc(100% - 32px)); display: grid; gap: 10px; border-color: var(--line); animation: pop .2s ease-out; }
+.invite-card p { margin: 0; }
+.invite-card b { color: var(--lime); }

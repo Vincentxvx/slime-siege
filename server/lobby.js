@@ -2,6 +2,7 @@
 const GD = require('../shared/data');
 const { Match } = require('./game/match');
 const prog = require('./progression');
+const friends = require('./friends');
 
 const BOT_NAMES = { easy: 'Gloop (Easy Bot)', normal: 'Ooze (Normal Bot)', hard: 'Jellyking (Hard Bot)' };
 const BOT_LOOKS = { easy: ['skin_glacier', 'banner_forest'], normal: ['skin_crimson', 'banner_ember'], hard: ['skin_shadow', 'banner_void'] };
@@ -19,6 +20,7 @@ class Lobby {
     this.matches = new Map();   // matchId -> { match, uids }
     this.userMatch = new Map(); // uid -> matchId
     this.rematch = new Map();   // uid -> { opp uid, at, wants }
+    this.invites = new Map();   // "target:from" -> time
     this.speed = Math.max(1, Number(process.env.GAME_SPEED) || 1); // >1 only for testing
     this.last = Date.now();
     this.acc = 0;
@@ -82,6 +84,7 @@ class Lobby {
       }
     });
     socket.on('rematch', () => this.requestRematch(uid));
+    friends.attachSocket(this, socket, uid);
     socket.on('disconnect', () => {
       if (this.sockets.get(uid) !== socket) return;
       const r = this.rematch.get(uid);
@@ -91,6 +94,7 @@ class Lobby {
       this.clearPending(uid);
       this.withMatch(uid, (match, idx) => match.setConnected(idx, false));
       this.broadcastOnline();
+      friends.announce(this, uid).catch(() => {});
     });
 
     // Rejoin a running match after a reconnect / page reload
@@ -102,6 +106,7 @@ class Lobby {
     }
     this.broadcastOnline();
     this.emitStatus(uid);
+    friends.announce(this, uid).catch(() => {});
   }
 
   // After an admin edit: push the new profile to the player's lobby, or kick them (ban/delete)
@@ -232,6 +237,7 @@ class Lobby {
     players.forEach((p, idx) => {
       if (p.isBot && Math.random() < 0.7) setTimeout(() => this.emitTo(uids, 'emote', { from: idx, id: 0 }), 2500);
     });
+    uids.forEach((u) => u && friends.announce(this, u).catch(() => {}));
     console.log(`[match] ${match.id} ${mode} on ${match.mapId}: ${players.map((p) => p.name).join(' vs ')}`);
     this.broadcastOnline();
   }
@@ -279,6 +285,7 @@ class Lobby {
       }
       this.emitStatus(uid);
     }
+    uids.forEach((u) => u && friends.announce(this, u).catch(() => {}));
     console.log(`[match] ${match.id} ended: winner=${result.winner} reason=${result.reason} round=${result.round}`);
     this.broadcastOnline();
   }

@@ -70,6 +70,13 @@
             <form id="room-join" class="join"><input id="room-code" placeholder="Code" maxlength="4" aria-label="Room code"><button class="btn" type="submit">Join</button></form>
           </div>
         </div>
+        <div class="friends-box">
+          <div class="fb-head"><h3>Friends</h3>
+            <form id="friend-add" class="join"><input id="friend-name" placeholder="Add by username" maxlength="16" aria-label="Username to add"><button class="btn" type="submit">Add</button></form>
+          </div>
+          <div id="friend-requests"></div>
+          <ul id="friend-list" class="friend-list"></ul>
+        </div>
       </div>
 
       <div class="panel shop">
@@ -137,6 +144,10 @@
     </div>
   </section>
 
+  <div id="invite-card" class="invite-card panel" hidden role="alertdialog" aria-live="assertive">
+    <p><b id="invite-name"></b> wants to play a match with you.</p>
+    <div class="row"><button class="btn primary" id="invite-accept">Play</button><button class="btn" id="invite-decline">Decline</button></div>
+  </div>
   <div id="lobby-toasts" class="toasts global" aria-live="polite"></div>
 
   <script src="/socket.io/socket.io.js"></script>

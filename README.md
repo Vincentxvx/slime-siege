@@ -7,6 +7,7 @@ A 1v1 online tower defense in the browser. Each player defends their own lane wh
 - **7 slimes:** including armored Knights, invisible Ghosts, Big slimes that split, and the Slime King boss.
 - **3 maps:** Meadow, Canyon, Glacier, picked at random.
 - **Progression:** XP and levels, coins, tower unlocks, tower skins, banners, a rating (Elo) leaderboard, match history and a first-win-of-the-day bonus.
+- **Friends:** add friends by username, see who is online or in a match, and invite them straight into a 1v1.
 - **Extras:** quick chat, sound effects (mute button), hotkeys, a preview of the next wave, and reconnecting after a page reload.
 
 **Controls:** `1`–`6` pick a tower, click to build (hold Shift to build several), `U` upgrade, `Del` sell, `Esc` cancel. Sends are on `Q W E / A S D / Z X C`.

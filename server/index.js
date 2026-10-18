@@ -103,6 +103,7 @@ function rateLimit(max, windowMs) {
   io.on('connection', (s) => lobby.onConnection(s).catch((e) => console.error(e)));
   admin.mount(app, { store, lobby, authed, wrap });
   admin.mountIdeas(app, { store, authed, wrap });
+  require('./friends').mount(app, { store, lobby, authed, wrap });
 
   server.listen(PORT, () => console.log(`Slime Siege running on http://localhost:${PORT}`));
 

@@ -470,6 +470,72 @@
       : '<button class="btn" id="btn-room">Create room code</button>';
   }
 
+  // ---------- friends ----------
+  const STATUS_LABEL = { online: 'Online', playing: 'In a match', offline: 'Offline' };
+  async function loadFriends() {
+    if (!S.token) return;
+    try { renderFriends(await api('/api/friends')); } catch (e) { /* ignore while offline */ }
+  }
+  function renderFriends(d) {
+    S.friends = d;
+    $('friend-requests').innerHTML = d.incoming.map((r) => `
+      <div class="freq" data-id="${r.id}"><span><b>${esc(r.username)}</b> wants to be friends</span>
+        <button class="btn primary small-btn" data-f="accept">Accept</button><button class="btn small-btn" data-f="decline">Decline</button></div>`).join('');
+    const rows = d.friends.map((f) => `
+      <li data-id="${f.id}" class="st-${f.status}">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="fname">${esc(f.username)}</span>
+        <small>${STATUS_LABEL[f.status]}</small>
+        ${f.status === 'online' ? '<button class="btn primary small-btn" data-f="invite">Invite</button>' : ''}
+        <button class="fx" data-f="remove" title="Remove friend" aria-label="Remove ${esc(f.username)}">×</button>
+      </li>`).concat(d.outgoing.map((o) => `
+      <li data-id="${o.id}" class="st-pending"><span class="dot" aria-hidden="true"></span><span class="fname">${esc(o.username)}</span><small>Request sent</small>
+        <button class="fx" data-f="cancel" title="Cancel request" aria-label="Cancel request to ${esc(o.username)}">×</button></li>`));
+    $('friend-list').innerHTML = rows.join('') || '<li class="empty muted">Add friends by username to see when they are online and invite them.</li>';
+  }
+  $('friend-add').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('friend-name').value.trim();
+    if (!name) return;
+    try {
+      const d = await api('/api/friends/request', { username: name });
+      renderFriends(d);
+      $('friend-name').value = '';
+      const now = d.friends.some((f) => f.username.toLowerCase() === name.toLowerCase());
+      toast(now ? `You and ${name} are now friends` : 'Friend request sent', 'good');
+    }
+    catch (err) { toast(err.message, 'bad'); }
+  });
+  async function friendAction(e) {
+    const b = e.target.closest('[data-f]'), row = e.target.closest('[data-id]');
+    if (!b || !row) return;
+    const id = row.dataset.id, f = b.dataset.f;
+    if (f === 'invite') { if (S.socket) S.socket.emit('invite', id); return; }
+    if (f === 'remove' && !b.classList.contains('armed')) {
+      b.classList.add('armed'); b.textContent = 'Remove?';
+      setTimeout(() => { b.classList.remove('armed'); b.textContent = '×'; }, 3000);
+      return;
+    }
+    try { renderFriends(await api('/api/friends/' + f, { id })); } catch (err) { toast(err.message, 'bad'); }
+  }
+  $('friend-list').addEventListener('click', friendAction);
+  $('friend-requests').addEventListener('click', friendAction);
+
+  let inviteTimer = null;
+  function showInvite(inv) {
+    if (window.Game.isActive()) return;
+    S.invite = inv;
+    $('invite-name').textContent = inv.username;
+    $('invite-card').hidden = false;
+    window.Sfx.play('incoming');
+    clearTimeout(inviteTimer);
+    inviteTimer = setTimeout(hideInvite, 55000);
+  }
+  function hideInvite() { $('invite-card').hidden = true; S.invite = null; clearTimeout(inviteTimer); }
+  const replyInvite = (accept) => { if (S.invite && S.socket) S.socket.emit('inviteReply', { from: S.invite.from, accept }); hideInvite(); };
+  $('invite-accept').addEventListener('click', () => replyInvite(true));
+  $('invite-decline').addEventListener('click', () => replyInvite(false));
+
   // ---------- socket ----------
   function connect() {
     if (S.socket) S.socket.disconnect();
@@ -481,10 +547,15 @@
     });
     socket.on('online', (o) => { $('online').textContent = `${o.count} online, ${o.matches} playing`; });
     socket.on('status', (st) => { S.status = st; renderStatus(); });
+    socket.on('friendsChanged', () => loadFriends());
+    socket.on('inviteSent', () => toast('Invite sent', 'good'));
+    socket.on('invite', (inv) => showInvite(inv));
+    socket.on('connect', () => loadFriends());
     socket.on('profile', (p) => { S.profile = p; renderProfile(); if (S.tab !== 'admin' && !window.Game.isActive()) renderShop(); });
     socket.on('errorMsg', (m) => toast(m, 'bad'));
     socket.on('kicked', (k) => { toast(k.reason, 'bad'); S.socket = null; logout(); });
     socket.on('matchStart', (info) => {
+      hideInvite();
       show('game');
       window.Game.start(info, {
         action: (a) => new Promise((resolve) => socket.timeout(4000).emit('action', a, (err, res) => resolve(err ? { ok: false, error: 'No response from server' } : res))),
