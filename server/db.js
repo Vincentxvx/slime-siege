@@ -97,9 +97,21 @@ class PgStore {
   async close() { await this.pool.end(); }
 }
 
+// Accepts the connection string even if it was pasted with quotes, backticks, spaces or a "psql" prefix.
+function cleanDatabaseUrl(raw) {
+  if (!raw || !raw.trim()) return null;
+  const m = raw.match(/postgres(?:ql)?:\/\/[^\s'"`]+/);
+  if (!m) {
+    console.error('[db] DATABASE_URL is set but does not contain a postgresql://... connection string. Fix it in your host\'s environment settings.');
+    process.exit(1);
+  }
+  return m[0];
+}
+
 async function createStore() {
-  const store = process.env.DATABASE_URL
-    ? new PgStore(process.env.DATABASE_URL)
+  const dbUrl = cleanDatabaseUrl(process.env.DATABASE_URL);
+  const store = dbUrl
+    ? new PgStore(dbUrl)
     : new FileStore(process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'users.json'));
   await store.init();
   return store;
