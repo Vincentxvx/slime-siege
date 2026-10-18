@@ -798,7 +798,9 @@
 
   function effect(g, f, t) {
     const k = (t - f.t0) / f.dur;
-    if (k < 0) return; // scheduled to start later
+    // not started yet, or already over: a frame can come late (e.g. after the tab was in the background),
+    // and k > 1 would give negative radii, which make arc() throw and stop the render loop
+    if (k < 0 || k >= 1) return;
     switch (f.k) {
       case 'a': {
         const x = f.x1 + (f.x2 - f.x1) * k, y = f.y1 + (f.y2 - f.y1) * k;
