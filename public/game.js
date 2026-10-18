@@ -42,6 +42,7 @@
     buildEmotes();
     buildPowers();
     $('bubble-me').hidden = true; $('bubble-op').hidden = true;
+    G.oppLoadout = null; $('opp-loadout').hidden = true; $('opp-loadout').innerHTML = '';
     sizeCanvases();
     window.Sfx.play('start');
     requestAnimationFrame(frame);
@@ -189,6 +190,32 @@
     window.Sfx.play('start');
   }
 
+  // Small icons of the towers your opponent brought, kept on their mini view all match.
+  // Built from the snapshot, so it also appears after a reload or for a spectator who joins late.
+  function showOppLoadout(list) {
+    const key = list.join(',');
+    if (key === G.oppLoadout) return;
+    G.oppLoadout = key;
+    const box = $('opp-loadout'), skin = G.info.players[1 - G.you].skin;
+    box.innerHTML = '';
+    box.hidden = !list.length;
+    box.setAttribute('aria-label', `Towers ${G.op.name} brought`);
+    for (const type of list) {
+      const T0 = GD.TOWERS[type];
+      if (!T0) continue;
+      const base = GD.towerStats(type, 0), max = GD.towerStats(type, T0.upgrades.length);
+      const notes = [];
+      if (base.detect) notes.push('Sees ghosts'); else if (max.detect) notes.push('Sees ghosts when fully upgraded');
+      if (base.pierceArmor) notes.push('Ignores armor'); else if (max.pierceArmor) notes.push('Ignores armor when fully upgraded');
+      const el = document.createElement('span');
+      el.title = [`${T0.name}: ${T0.desc}`].concat(notes.filter((n) => !T0.desc.includes(n)).map((n) => n + '.')).join(' ');
+      el.setAttribute('role', 'img');
+      el.setAttribute('aria-label', el.title);
+      el.append(R.towerIcon(type, skin, 18));
+      box.append(el);
+    }
+  }
+
   function buildTowerBar() {
     const bar = $('tower-bar');
     bar.innerHTML = '';
@@ -283,6 +310,7 @@
     if (!G.active) return;
     if (s.state === 'picking') { renderPick(s); G.cur = s; G.curAt = now(); updateHud(); return; }
     if (G.picking) endPick(s);
+    if (s.loadouts) showOppLoadout(s.loadouts[1 - G.you] || []);
     const t = now();
     if (G.cur && s.boards[G.you].lives < G.cur.boards[G.you].lives) {
       window.Sfx.play('leak');
