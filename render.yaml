@@ -5,6 +5,7 @@ services:
     name: slime-siege
     runtime: node
     plan: free
+    region: frankfurt   # closest Render region to Hungary = lower lag
     buildCommand: npm install --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
