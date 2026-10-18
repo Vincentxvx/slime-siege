@@ -9,14 +9,16 @@
     active: false, info: null, net: null, you: 0,
     prev: null, cur: null, prevAt: 0, curAt: 0, interval: 0.1,
     placing: null, hover: null, selected: null,
-    effects: [], aim: [{}, {}], hits: [new Map(), new Map()], built: false, panelKey: '', lastRound: -1,
+    effects: [], aim: [{}, {}], hits: [new Map(), new Map()], anim: [new Map(), new Map()], built: false, panelKey: '', lastRound: -1,
   };
   const HIT_FLASH = 0.16; // seconds a slime flashes white after losing HP
+  const DROP = 0.18;      // seconds a new tower takes to drop onto its tile
+  const TIER_COLORS = ['#efe7ff', '#f0a564', '#e6edf5', '#ffd35c']; // text/sparks per level: base, bronze, silver, gold
 
   // ---------- setup ----------
   function start(info, net) {
     Object.assign(G, {
-      active: true, info, net, you: info.you, prev: null, cur: null, effects: [], aim: [{}, {}], hits: [new Map(), new Map()],
+      active: true, info, net, you: info.you, prev: null, cur: null, effects: [], aim: [{}, {}], hits: [new Map(), new Map()], anim: [new Map(), new Map()],
       placing: null, hover: null, selected: null, panelKey: '', lastRound: -1, ended: false, previewRound: -1,
     });
     G.map = GD.MAPS[info.map];
@@ -299,7 +301,7 @@
       processEvents(i, b);
       // the previous snapshot has no maps if it was from the picking phase
       const pb = G.prev && G.prev.boards[i];
-      if (pb && pb.emap) { deaths(i, pb, b); hits(i, pb, b); }
+      if (pb && pb.emap) { deaths(i, pb, b); hits(i, pb, b); towerChanges(i, pb, b); }
     });
     if (G.selected && !G.cur.boards[G.you].tmap.has(G.selected)) G.selected = null;
     updateHud();
@@ -375,6 +377,31 @@
       if (pe && e[3] < pe[3]) m.set(e[0], t);
     }
     for (const [id, at] of m) if (t - at > HIT_FLASH) m.delete(id);
+  }
+
+  // Build, upgrade and sell effects, found by comparing towers between snapshots (both lanes)
+  function towerChanges(bi, prevB, curB) {
+    const t = now(), anim = G.anim[bi];
+    for (const tw of curB.towers) {
+      const old = prevB.tmap.get(tw[0]);
+      const x = (tw[2] + 0.5) * T, y = (tw[3] + 0.5) * T;
+      if (!old) {
+        anim.set(tw[0], { k: 'drop', t0: t, dur: DROP });
+        G.effects.push({ b: bi, k: 'dust', x1: x, y1: y + T * 0.3, t0: t + DROP, dur: 0.45, seed: tw[0] });
+      } else if (tw[4] > old[4]) {
+        const color = TIER_COLORS[Math.min(3, tw[4])];
+        anim.set(tw[0], { k: 'pop', t0: t, dur: 0.3 });
+        G.effects.push({ b: bi, k: 'spark', x1: x, y1: y, color, t0: t, dur: 0.6, seed: tw[0] + tw[4] });
+        G.effects.push({ b: bi, k: 'txt', x1: x, y1: y - T * 0.55, text: tw[4] >= 3 ? 'MAX' : 'Level ' + (tw[4] + 1), color, t0: t, dur: 1.1 });
+      }
+    }
+    for (const old of prevB.towers) {
+      if (curB.tmap.has(old[0])) continue;
+      const x = (old[2] + 0.5) * T, y = (old[3] + 0.5) * T;
+      G.effects.push({ b: bi, k: 'coins', x1: x, y1: y, t0: t, dur: 0.7 });
+      if (bi === G.you) G.effects.push({ b: bi, k: 'txt', x1: x, y1: y - 10, text: '+' + GD.sellValue(GD.TOWER_ORDER[old[1]], old[4]), color: '#ffd35c', t0: t, dur: 1.1 });
+    }
+    for (const [id, a] of anim) if (t - a.t0 > a.dur) anim.delete(id);
   }
 
   // ---------- HUD & panels ----------
@@ -677,7 +704,14 @@
 
     for (const tw of b.towers) {
       const type = GD.TOWER_ORDER[tw[1]];
-      R.tower(g, type, tw[4], (tw[2] + 0.5) * T, (tw[3] + 0.5) * T, skin, G.aim[bi][tw[0]] || 0, T, t);
+      let y = (tw[3] + 0.5) * T, size = T;
+      const an = G.anim[bi].get(tw[0]);
+      if (an) { // new towers drop in, upgraded ones pop
+        const k = Math.min(1, (t - an.t0) / an.dur);
+        if (an.k === 'drop') y -= (1 - k) * (1 - k) * T * 0.7;
+        else size = T * (1 + 0.2 * Math.sin(k * Math.PI));
+      }
+      R.tower(g, type, tw[4], (tw[2] + 0.5) * T, y, skin, G.aim[bi][tw[0]] || 0, size, t);
       if (main && tw[0] === G.selected) {
         g.strokeStyle = '#fff'; g.lineWidth = 2; g.setLineDash([4, 4]);
         g.strokeRect(tw[2] * T + 1, tw[3] * T + 1, T - 2, T - 2); g.setLineDash([]);
@@ -724,6 +758,7 @@
 
   function effect(g, f, t) {
     const k = (t - f.t0) / f.dur;
+    if (k < 0) return; // scheduled to start later
     switch (f.k) {
       case 'a': {
         const x = f.x1 + (f.x2 - f.x1) * k, y = f.y1 + (f.y2 - f.y1) * k;
@@ -771,6 +806,42 @@
         for (let i = 0; i < 6; i++) {
           const ang = i * 1.05 + f.seed, dist = f.r * (0.4 + k * 1.4);
           g.beginPath(); g.arc(f.x1 + Math.cos(ang) * dist, f.y1 + Math.sin(ang) * dist, f.r * 0.28 * (1 - k * 0.5), 0, 7); g.fill();
+        }
+        g.globalAlpha = 1;
+        break;
+      case 'dust': { // a new tower lands
+        g.globalAlpha = 1 - k;
+        g.strokeStyle = 'rgba(40,28,16,0.45)'; g.lineWidth = 2;
+        g.beginPath(); g.ellipse(f.x1, f.y1, T * (0.3 + 0.45 * k), T * (0.1 + 0.15 * k), 0, 0, 7); g.stroke();
+        g.fillStyle = 'rgba(240,230,210,0.95)'; g.strokeStyle = 'rgba(40,28,16,0.35)'; g.lineWidth = 1;
+        for (let i = 0; i < 7; i++) {
+          const a = i * 0.9 + f.seed, d = T * (0.28 + 0.4 * k);
+          g.beginPath(); g.arc(f.x1 + Math.cos(a) * d, f.y1 + Math.sin(a) * d * 0.35 - k * 4, 3.2 * (1 - 0.5 * k), 0, 7); g.fill(); g.stroke();
+        }
+        g.globalAlpha = 1;
+        break;
+      }
+      case 'spark': { // upgrade: a ring and sparks in the new tier colour
+        g.globalAlpha = 1 - k;
+        g.strokeStyle = f.color; g.lineWidth = 3 * (1 - k) + 0.5;
+        g.beginPath(); g.arc(f.x1, f.y1, T * (0.35 + 0.45 * k), 0, 7); g.stroke();
+        g.fillStyle = f.color; g.strokeStyle = 'rgba(30,21,48,0.7)'; g.lineWidth = 1;
+        for (let i = 0; i < 10; i++) {
+          const a = i * 0.628 + f.seed * 0.37, d = T * (0.3 + 0.55 * k), s = 4 * (1 - k) + 1.5;
+          const sx = f.x1 + Math.cos(a) * d, sy = f.y1 + Math.sin(a) * d - k * 8;
+          g.beginPath(); g.moveTo(sx, sy - s); g.lineTo(sx + s * 0.45, sy); g.lineTo(sx, sy + s); g.lineTo(sx - s * 0.45, sy); g.closePath();
+          g.fill(); g.stroke();
+        }
+        g.globalAlpha = 1;
+        break;
+      }
+      case 'coins': // sold: coins hop out of the empty tile
+        g.globalAlpha = 1 - k * k;
+        g.fillStyle = '#ffd35c'; g.strokeStyle = '#8a6410'; g.lineWidth = 1.2;
+        for (let i = 0; i < 5; i++) {
+          const a = -Math.PI / 2 + (i - 2) * 0.5, v = T * 0.85;
+          const cx = f.x1 + Math.cos(a) * v * k, cy = f.y1 + Math.sin(a) * v * k + T * 0.9 * k * k;
+          g.beginPath(); g.ellipse(cx, cy, 1 + 3.5 * Math.abs(Math.cos(k * 10 + i)), 4.5, 0, 0, 7); g.fill(); g.stroke();
         }
         g.globalAlpha = 1;
         break;
