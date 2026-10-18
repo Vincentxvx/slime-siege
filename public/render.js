@@ -246,6 +246,7 @@
   // Draw a slime centred at (x,y) px.
   // opts.flash (0-1): just took damage, so it squishes and flashes white
   // opts.band (colour): sent by a player, so it wears a headband in that colour
+  // opts.unseen: a ghost none of your towers can see, so it gets a dashed pink ring and a crossed-out eye
   function slime(g, type, x, y, size, opts) {
     opts = opts || {};
     const E = GD.ENEMIES[type];
@@ -255,7 +256,7 @@
     const rx = r * (1 + wob), ry = r * (1 - wob);
     g.save();
     g.translate(x, y + r * 0.1);
-    if (E.ghost) g.globalAlpha = 0.55;
+    if (E.ghost) g.globalAlpha = 0.5 + 0.12 * Math.sin(t * 5 + id); // ghosts shimmer
     g.fillStyle = 'rgba(0,0,0,0.22)';
     g.beginPath(); g.ellipse(0, ry * 0.85, rx * 0.95, ry * 0.3, 0, 0, 7); g.fill();
     // body: flat-bottomed dome
@@ -316,6 +317,21 @@
       g.beginPath(); g.ellipse(0, ry * 0.2, rx * 1.15, ry * 0.95, 0, 0, 7); g.stroke();
     }
     g.restore();
+    if (opts.unseen) {
+      g.save();
+      g.strokeStyle = '#ff6fa8'; g.lineWidth = Math.max(1.5, size / 24);
+      g.setLineDash([size / 10, size / 13]); g.lineDashOffset = -t * size * 0.4;
+      g.beginPath(); g.ellipse(x, y + r * 0.15, r * 1.35, r * 1.1, 0, 0, 7); g.stroke();
+      g.setLineDash([]);
+      const ex = x, ey = y - r * 1.45, ew = r * 0.62;
+      g.beginPath(); g.moveTo(ex - ew, ey);
+      g.quadraticCurveTo(ex, ey - ew * 0.95, ex + ew, ey); g.quadraticCurveTo(ex, ey + ew * 0.95, ex - ew, ey); g.closePath();
+      g.fillStyle = '#fff'; g.fill(); g.strokeStyle = '#1e1530'; g.lineWidth = Math.max(1, size / 34); g.stroke();
+      g.fillStyle = '#1e1530'; g.beginPath(); g.arc(ex, ey, ew * 0.3, 0, 7); g.fill();
+      g.strokeStyle = '#ff6fa8'; g.lineWidth = Math.max(1.5, size / 22); g.lineCap = 'round';
+      g.beginPath(); g.moveTo(ex - ew * 0.85, ey + ew * 0.6); g.lineTo(ex + ew * 0.85, ey - ew * 0.6); g.stroke();
+      g.restore();
+    }
     if (opts.hp != null && opts.hp < 100 && E.hpTotal >= 8) {
       const w = r * 1.8;
       g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(x - w / 2, y - r * 1.25, w, 3.5);

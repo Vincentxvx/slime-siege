@@ -718,15 +718,25 @@
       }
     }
 
+    // towers that see ghosts (main board only): [x, y, range²], same check as the server's candidates()
+    const seers = main ? b.towers.map((tw) => {
+      const s = GD.towerStats(GD.TOWER_ORDER[tw[1]], tw[4]);
+      return s.detect ? [tw[2] + 0.5, tw[3] + 0.5, s.range * s.range] : null;
+    }).filter(Boolean) : null;
+
     const sorted = b.enemies.slice().sort((x, y) => GD.ENEMIES[GD.ENEMY_ORDER[x[1]]].r - GD.ENEMIES[GD.ENEMY_ORDER[y[1]]].r);
     for (const e of sorted) {
       let d = e[2] / 100;
       const pe = pb && pb.emap && pb.emap.get(e[0]);
       if (pe) d = pe[2] / 100 + (d - pe[2] / 100) * a;
       const p = GD.posAt(G.map, d);
+      const type = GD.ENEMY_ORDER[e[1]];
       const hit = G.hits[bi].get(e[0]);
-      R.slime(g, GD.ENEMY_ORDER[e[1]], p.x * T, p.y * T, T, {
-        time: t, id: e[0], hp: e[3], slowed: e[4], dx: p.dx, dy: p.dy,
+      // a ghost on the board that none of your ghost-seeing towers can reach gets a warning
+      const unseen = !!seers && !!GD.ENEMIES[type].ghost && p.x >= 0 && p.x <= GD.COLS && p.y >= 0 && p.y <= GD.ROWS &&
+        !seers.some(([sx, sy, r2]) => (p.x - sx) * (p.x - sx) + (p.y - sy) * (p.y - sy) <= r2);
+      R.slime(g, type, p.x * T, p.y * T, T, {
+        time: t, id: e[0], hp: e[3], slowed: e[4], dx: p.dx, dy: p.dy, unseen,
         flash: hit ? Math.max(0, 1 - (t - hit) / HIT_FLASH) : 0,
         // sent slimes wear a headband: pink in your lane (from your opponent), lime in theirs (from you)
         band: e[5] ? (bi === G.you ? '#ff6fa8' : '#9be15d') : null,
