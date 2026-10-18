@@ -734,7 +734,7 @@
       const type = GD.TOWER_ORDER[tw[1]];
       let y = (tw[3] + 0.5) * T, size = T;
       const an = G.anim[bi].get(tw[0]);
-      if (an) { // new towers drop in, upgraded ones pop
+      if (an && !R.reducedMotion) { // new towers drop in, upgraded ones pop
         const k = Math.min(1, (t - an.t0) / an.dur);
         if (an.k === 'drop') y -= (1 - k) * (1 - k) * T * 0.7;
         else size = T * (1 + 0.2 * Math.sin(k * Math.PI));

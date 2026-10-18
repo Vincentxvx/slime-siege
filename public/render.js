@@ -3,6 +3,8 @@
   const GD = window.GD;
   const T = 40; // pixels per tile at scale 1
   const W = GD.COLS * T, H = GD.ROWS * T;
+  // players who ask their system for less motion get no squish, drop/pop or marching dashes
+  const REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   function rng(seed) {
     return function () {
@@ -252,7 +254,7 @@
     const E = GD.ENEMIES[type];
     const r = E.r * size;
     const t = opts.time || 0, id = opts.id || 0, flash = opts.flash || 0;
-    const wob = Math.sin(t * 9 + id * 1.7) * 0.09 + flash * 0.14;
+    const wob = Math.sin(t * 9 + id * 1.7) * 0.09 + (REDUCED ? 0 : flash * 0.14);
     const rx = r * (1 + wob), ry = r * (1 - wob);
     g.save();
     g.translate(x, y + r * 0.1);
@@ -320,7 +322,7 @@
     if (opts.unseen) {
       g.save();
       g.strokeStyle = '#ff6fa8'; g.lineWidth = Math.max(1.5, size / 24);
-      g.setLineDash([size / 10, size / 13]); g.lineDashOffset = -t * size * 0.4;
+      g.setLineDash([size / 10, size / 13]); g.lineDashOffset = REDUCED ? 0 : -t * size * 0.4;
       g.beginPath(); g.ellipse(x, y + r * 0.15, r * 1.35, r * 1.1, 0, 0, 7); g.stroke();
       g.setLineDash([]);
       const ex = x, ey = y - r * 1.45, ew = r * 0.62;
@@ -364,5 +366,5 @@
     return c;
   }
 
-  window.Render = { T, W, H, ground, tower, slime, towerIcon, slimeIcon, roundRect, lighten, darken };
+  window.Render = { T, W, H, ground, tower, slime, towerIcon, slimeIcon, roundRect, lighten, darken, reducedMotion: REDUCED };
 })();
