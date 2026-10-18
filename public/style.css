@@ -149,6 +149,8 @@ input {
 .opp-view { position: relative; }
 .opp-loadout { position: absolute; left: 6px; bottom: 6px; z-index: 3; display: flex; gap: 2px; padding: 2px 3px; background: rgba(30,21,48,.72); border: 2px solid var(--line); border-radius: 8px; }
 .opp-loadout span { display: block; line-height: 0; }
+.opp-loadout[data-corner="tl"] { top: 6px; bottom: auto; }
+.opp-loadout[data-corner="br"] { left: auto; right: 6px; }
 .side { display: grid; gap: 10px; align-content: start; }
 .sends { padding: 8px; }
 .sends h3 { margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }

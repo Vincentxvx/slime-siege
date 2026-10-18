@@ -201,6 +201,13 @@
     box.innerHTML = '';
     box.hidden = !list.length;
     box.setAttribute('aria-label', `Towers ${G.op.name} brought`);
+    // sit in the corner whose ~6×2 tiles have the least path under them (Canyon starts bottom-left)
+    let least = Infinity;
+    for (const [corner, c0, r0] of [['bl', 0, GD.ROWS - 2], ['tl', 0, 0], ['br', GD.COLS - 6, GD.ROWS - 2]]) {
+      let n = 0;
+      for (let c = c0; c < c0 + 6; c++) for (let r = r0; r < r0 + 2; r++) if (G.map.pathTiles.has(c + ',' + r)) n++;
+      if (n < least) { least = n; box.dataset.corner = corner; }
+    }
     for (const type of list) {
       const T0 = GD.TOWERS[type];
       if (!T0) continue;
