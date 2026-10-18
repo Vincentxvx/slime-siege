@@ -96,6 +96,7 @@
     ];
     $('profile-stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
     $('daily').hidden = !p.dailyAvailable;
+    $('tab-admin').hidden = !p.isAdmin;
     const hist = p.history || [];
     $('history').innerHTML = hist.length
       ? hist.map((h) => `<li class="${h.draw ? 'draw' : h.won ? 'win' : 'loss'}"><b>${h.draw ? 'Draw' : h.won ? 'Win' : 'Loss'}</b><span>vs ${esc(h.opp || '?')}</span><small>R${h.round} · ${ago(h.at)}</small></li>`).join('')
@@ -158,6 +159,7 @@
       return;
     }
     if (S.tab === 'howto') { body.append(howTo()); return; }
+    if (S.tab === 'admin') { renderAdmin(body); return; }
     const grid = document.createElement('div');
     grid.className = 'items';
     if (S.tab === 'towers') {
@@ -220,6 +222,127 @@
     }
     wrap.append(g);
     return wrap;
+  }
+
+  // ---------- admin ----------
+  const xpAtLevel = (lvl) => { let xp = 0; for (let l = 1; l < lvl; l++) xp += GD.xpForNext(l); return xp; };
+
+  async function renderAdmin(body) {
+    body.innerHTML = '<p class="muted">Loading players…</p>';
+    let data;
+    try { data = await api('/api/admin/overview'); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    if (S.tab !== 'admin') return;
+    S.adminUsers = data.users;
+    body.innerHTML = `
+      <div class="admin-top">
+        <div class="admin-stats"><span><b>${data.players}</b> players</span><span><b>${data.online}</b> online</span><span><b>${data.matches}</b> matches running</span></div>
+        <form id="grant-all" class="admin-grant"><label>Give every player <input type="number" min="1" max="1000000" name="coins" value="100"> coins</label><button class="btn">Give to all</button></form>
+      </div>
+      <div class="admin-grid">
+        <div class="admin-list">
+          <input id="admin-search" placeholder="Search players" aria-label="Search players">
+          <table><thead><tr><th>Player</th><th>Lv</th><th>Coins</th><th>Rating</th><th>W–L</th></tr></thead><tbody id="admin-rows"></tbody></table>
+        </div>
+        <div class="admin-edit panel-inner" id="admin-edit"><p class="muted">Pick a player to edit.</p></div>
+      </div>`;
+    const rows = () => {
+      const q = $('admin-search').value.trim().toLowerCase();
+      $('admin-rows').innerHTML = S.adminUsers.filter((u) => u.username.toLowerCase().includes(q)).map((u) =>
+        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
+        `<td>${u.level}</td><td>${u.coins}</td><td>${u.rating}</td><td>${u.wins}–${u.losses}</td></tr>`).join('') ||
+        '<tr><td colspan="5" class="muted">No players match.</td></tr>';
+    };
+    rows();
+    $('admin-search').oninput = rows;
+    $('admin-rows').onclick = (e) => {
+      const tr = e.target.closest('tr[data-id]');
+      if (!tr) return;
+      S.adminSel = tr.dataset.id;
+      rows();
+      adminEditor(S.adminUsers.find((u) => u.id === S.adminSel), rows);
+    };
+    $('grant-all').onsubmit = async (e) => {
+      e.preventDefault();
+      const coins = Number(e.target.coins.value);
+      try { const r = await api('/api/admin/grant-all', { coins }); toast(`Gave ${coins} coins to ${r.players} players`, 'good'); renderAdmin(body); }
+      catch (err) { toast(err.message, 'bad'); }
+    };
+    if (S.adminSel) { const u = S.adminUsers.find((x) => x.id === S.adminSel); if (u) adminEditor(u, rows); }
+  }
+
+  function adminEditor(u, refreshRows) {
+    const box = $('admin-edit');
+    const isMe = u.id === S.profile.id;
+    const num = (key, label) => `<label>${label}<input type="number" min="0" name="${key}" value="${u[key]}"></label>`;
+    const checks = (name, ids, owned, labelOf, locked) => ids.map((id) =>
+      `<label class="chk"><input type="checkbox" name="${name}" value="${id}" ${owned.includes(id) ? 'checked' : ''} ${locked.includes(id) ? 'disabled' : ''}>${esc(labelOf(id))}</label>`).join('');
+    box.innerHTML = `
+      <div class="ae-head"><h4>${esc(u.username)}</h4><span class="muted small">Joined ${new Date(u.createdAt).toLocaleDateString()}</span></div>
+      <form id="ae-form">
+        <div class="ae-nums">
+          ${num('coins', 'Coins')}
+          <label>Level<input type="number" min="1" max="200" name="level" value="${u.level}"></label>
+          ${num('xp', 'XP')}${num('rating', 'Rating')}${num('wins', 'Wins')}${num('losses', 'Losses')}
+          ${num('botWins', 'Bot wins')}${num('bestRound', 'Best round')}${num('games', 'Matches')}
+        </div>
+        <div class="row ae-quick">
+          <button type="button" class="btn ghost" data-q="coins">+1000 coins</button>
+          <button type="button" class="btn ghost" data-q="all">Unlock everything</button>
+          <button type="button" class="btn ghost" data-q="reset">Reset stats</button>
+        </div>
+        <fieldset><legend>Towers</legend>${checks('unlocked', GD.TOWER_ORDER, u.unlocked, (id) => GD.TOWERS[id].name, GD.DEFAULT_TOWERS)}</fieldset>
+        <fieldset><legend>Cosmetics</legend>${checks('owned', Object.keys(GD.SKINS).concat(Object.keys(GD.BANNERS)), u.owned,
+          (id) => (GD.SKINS[id] ? 'Skin: ' + GD.SKINS[id].name : 'Banner: ' + GD.BANNERS[id].name), GD.DEFAULT_COSMETICS)}</fieldset>
+        <label class="chk ban"><input type="checkbox" name="banned" ${u.banned ? 'checked' : ''} ${isMe ? 'disabled' : ''}>Banned (can't log in)</label>
+        <button class="btn primary" type="submit">Save changes</button>
+      </form>
+      <form id="ae-pass" class="ae-inline"><input type="text" name="password" placeholder="New password" minlength="6" autocomplete="off"><button class="btn" type="submit">Set password</button></form>
+      ${isMe ? '' : '<button class="btn danger" id="ae-delete">Delete account</button>'}`;
+    const f = $('ae-form');
+    f.level.oninput = () => { const l = Math.max(1, Number(f.level.value) || 1); f.xp.value = xpAtLevel(l); };
+    f.xp.oninput = () => { f.level.value = GD.levelInfo(Number(f.xp.value) || 0).level; };
+    box.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => {
+      if (b.dataset.q === 'coins') f.coins.value = Number(f.coins.value) + 1000;
+      if (b.dataset.q === 'all') f.querySelectorAll('input[type=checkbox]:not([name=banned])').forEach((c) => (c.checked = true));
+      if (b.dataset.q === 'reset') { for (const k of ['wins', 'losses', 'botWins', 'bestRound', 'games']) f[k].value = 0; f.rating.value = 1000; }
+    }));
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = {};
+      for (const k of ['coins', 'xp', 'rating', 'wins', 'losses', 'botWins', 'bestRound', 'games']) body[k] = f[k].value;
+      body.unlocked = [...f.querySelectorAll('input[name=unlocked]:checked')].map((c) => c.value);
+      body.owned = [...f.querySelectorAll('input[name=owned]:checked')].map((c) => c.value);
+      body.banned = f.banned.checked;
+      try {
+        const r = await api('/api/admin/user/' + u.id, body);
+        Object.assign(u, r.user);
+        refreshRows();
+        adminEditor(u, refreshRows);
+        toast(`Saved ${u.username}`, 'good');
+        if (isMe) { S.profile = (await api('/api/me')).profile; renderProfile(); }
+      } catch (err) { toast(err.message, 'bad'); }
+    };
+    $('ae-pass').onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api(`/api/admin/user/${u.id}/password`, { password: e.target.password.value }); e.target.reset(); toast('Password changed', 'good'); }
+      catch (err) { toast(err.message, 'bad'); }
+    };
+    const del = $('ae-delete');
+    if (del) del.onclick = async () => {
+      if (!del.classList.contains('armed')) {
+        del.classList.add('armed'); del.textContent = `Click again to delete ${u.username} forever`;
+        setTimeout(() => { del.classList.remove('armed'); del.textContent = 'Delete account'; }, 3000);
+        return;
+      }
+      try {
+        await api(`/api/admin/user/${u.id}/delete`, {});
+        S.adminUsers = S.adminUsers.filter((x) => x.id !== u.id);
+        S.adminSel = null;
+        refreshRows();
+        $('admin-edit').innerHTML = '<p class="muted">Account deleted.</p>';
+        toast(`Deleted ${u.username}`, 'good');
+      } catch (err) { toast(err.message, 'bad'); }
+    };
   }
 
   function item(visual, name, desc) {
@@ -285,6 +408,7 @@
     });
     socket.on('online', (o) => { $('online').textContent = `${o.count} online, ${o.matches} playing`; });
     socket.on('status', (st) => { S.status = st; renderStatus(); });
+    socket.on('profile', (p) => { S.profile = p; renderProfile(); if (S.tab !== 'admin' && !window.Game.isActive()) renderShop(); });
     socket.on('errorMsg', (m) => toast(m, 'bad'));
     socket.on('kicked', (k) => { toast(k.reason, 'bad'); S.socket = null; logout(); });
     socket.on('matchStart', (info) => {

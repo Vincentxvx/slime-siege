@@ -51,9 +51,24 @@ Things to know about the free tier:
 |---|---|
 | `PORT` | Port to listen on (hosts set this for you) |
 | `DATABASE_URL` | Postgres connection string. If empty, uses `data/users.json` |
+| `ADMIN_USERS` | Usernames that get the **Admin** tab, comma separated (e.g. `vince,mio`) |
 | `SESSION_SECRET` | Secret used to sign logins. If empty, one is generated into `data/secret.key` |
 | `GAME_SPEED` | Testing only: run matches 2×, 5×… faster |
 | `FORCE_MAP` | Testing only: always use `meadow`, `canyon` or `glacier` |
+
+## Admin panel
+
+Set `ADMIN_USERS` to your username (on Render: **Environment → Add → `ADMIN_USERS`**). After the server restarts, your lobby shows an **Admin** tab where you can:
+
+- see every player, how many are online and how many matches are running
+- change coins, level/XP, rating, wins, losses and other stats
+- unlock towers and cosmetics for a player
+- ban or unban an account (banned players are kicked immediately and can't log in)
+- set a new password for someone who forgot theirs
+- delete an account
+- give every player bonus coins at once
+
+Changes reach players who are online right away. Every admin action is written to the server log as `[admin] …`.
 
 ## Project layout
 

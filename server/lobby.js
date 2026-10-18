@@ -104,6 +104,20 @@ class Lobby {
     this.emitStatus(uid);
   }
 
+  // After an admin edit: push the new profile to the player's lobby, or kick them (ban/delete)
+  async refreshUser(uid, kickReason) {
+    const s = this.sockets.get(uid);
+    if (!s) return;
+    if (kickReason) {
+      this.withMatch(uid, (match, idx) => match.forfeit(idx));
+      s.emit('kicked', { reason: kickReason });
+      s.disconnect(true);
+      return;
+    }
+    const u = await this.store.getById(uid);
+    if (u) s.emit('profile', prog.publicProfile(u));
+  }
+
   emitTo(uids, ev, data) {
     for (const u of uids) { const s = u && this.sockets.get(u); if (s) s.emit(ev, data); }
   }

@@ -32,6 +32,7 @@ function publicProfile(u) {
     title: GD.titleFor(li.level), coins: u.coins, wins: u.wins, losses: u.losses, botWins: u.botWins,
     games: u.games, bestRound: u.bestRound, unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner,
     history: u.history || [], dailyAvailable: u.lastDailyWin !== today(), rating: u.rating || 1000,
+    isAdmin: (process.env.ADMIN_USERS || '').split(',').map((x) => x.trim().toLowerCase()).includes(u.username.toLowerCase()),
   };
 }
 

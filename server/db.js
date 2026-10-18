@@ -35,6 +35,14 @@ class FileStore {
     return doc;
   }
   async save(doc) { this.users.set(doc.id, doc); this.scheduleSave(); }
+  async all() { return [...this.users.values()]; }
+  async delete(id) {
+    const u = this.users.get(id);
+    if (!u) return;
+    this.users.delete(id);
+    this.byName.delete(u.username.toLowerCase());
+    this.scheduleSave();
+  }
   async top(n) {
     return [...this.users.values()].sort((a, b) => (b.rating || 1000) - (a.rating || 1000) || b.wins - a.wins || b.xp - a.xp).slice(0, n);
   }
@@ -93,6 +101,14 @@ class PgStore {
     const r = await this.pool.query(
       "SELECT doc FROM users ORDER BY COALESCE((doc->>'rating')::int, 1000) DESC, (doc->>'wins')::int DESC, (doc->>'xp')::int DESC LIMIT $1", [n]);
     return r.rows.map((x) => this.cache.get(x.doc.id) || x.doc);
+  }
+  async all() {
+    const r = await this.pool.query('SELECT doc FROM users ORDER BY name_lower');
+    return r.rows.map((x) => this.cache.get(x.doc.id) || this.remember(x.doc));
+  }
+  async delete(id) {
+    this.cache.delete(id);
+    await this.pool.query('DELETE FROM users WHERE id=$1', [id]);
   }
   async close() { await this.pool.end(); }
 }

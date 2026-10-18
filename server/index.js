@@ -7,6 +7,7 @@ const { createStore } = require('./db');
 const auth = require('./auth');
 const prog = require('./progression');
 const { Lobby } = require('./lobby');
+const admin = require('./admin');
 
 const PORT = Number(process.env.PORT) || 3000;
 const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;
@@ -38,6 +39,7 @@ function rateLimit(max, windowMs) {
     const uid = auth.readToken((req.headers.authorization || '').replace(/^Bearer /, ''));
     const user = uid && (await store.getById(uid));
     if (!user) return res.status(401).json({ error: 'Please log in again' });
+    if (user.banned) return res.status(403).json({ error: 'This account is banned' });
     req.user = user;
     next();
   };
@@ -60,6 +62,7 @@ function rateLimit(max, windowMs) {
     const { username, password } = req.body || {};
     const user = await store.getByName(username || '');
     if (!user || !(await auth.verifyPassword(String(password || ''), user.passHash))) return res.status(401).json({ error: 'Wrong username or password' });
+    if (user.banned) return res.status(403).json({ error: 'This account is banned' });
     res.json({ token: auth.makeToken(user.id), profile: prog.publicProfile(user) });
   }));
 
@@ -90,13 +93,15 @@ function rateLimit(max, windowMs) {
   io.use(async (socket, next) => {
     try {
       const uid = auth.readToken(socket.handshake.auth && socket.handshake.auth.token);
-      if (!uid || !(await store.getById(uid))) return next(new Error('unauthorized'));
+      const u = uid && (await store.getById(uid));
+      if (!u || u.banned) return next(new Error('unauthorized'));
       socket.data.uid = uid;
       next();
     } catch (e) { next(new Error('server error')); }
   });
   const lobby = new Lobby(io, store);
   io.on('connection', (s) => lobby.onConnection(s).catch((e) => console.error(e)));
+  admin.mount(app, { store, lobby, authed, wrap });
 
   server.listen(PORT, () => console.log(`Slime Siege running on http://localhost:${PORT}`));
 
