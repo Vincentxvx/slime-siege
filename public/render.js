@@ -86,23 +86,33 @@
     const skin = GD.SKINS[skinId] || GD.SKINS.skin_classic;
     const s = size / 40;
     const L = level || 0, t = time || 0;
+    // Tiers: bronze (lvl 2) → silver with battlements (lvl 3) → gold, glowing (MAX). Towers also grow a little.
+    const k = [0.9, 1.0, 1.06, 1.1][Math.min(3, L)];
+    const tier = [skin.trim, '#c8793a', '#d6dee8', '#f0b81c'][Math.min(3, L)];
     g.save();
-    g.translate(x, y); g.scale(s, s);
-    // shadow + plate (plate grows fancier with level)
+    g.translate(x, y); g.scale(s * k, s * k);
     g.fillStyle = 'rgba(0,0,0,0.22)';
     g.beginPath(); g.ellipse(1, 14, 16, 5, 0, 0, 7); g.fill();
+    if (L >= 2) { // battlements (merlons) around the plate
+      g.fillStyle = tier; g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 1;
+      for (const p of [-9, 0, 9]) {
+        for (const [rx, ry, rw, rh] of [[p - 2.5, -18.5, 5, 4], [p - 2.5, 14.5, 5, 4], [-18.5, p - 2.5, 4, 5], [14.5, p - 2.5, 4, 5]]) {
+          g.fillRect(rx, ry, rw, rh); g.strokeRect(rx, ry, rw, rh);
+        }
+      }
+    }
     if (skin.glow) { g.shadowColor = skin.trim; g.shadowBlur = 10; }
-    if (L >= 3) { g.shadowColor = '#ffd35c'; g.shadowBlur = 8 + 3 * Math.sin(t * 3); }
+    if (L >= 3) { g.shadowColor = '#ffd35c'; g.shadowBlur = 10 + 4 * Math.sin(t * 3); }
     roundRect(g, -16, -16, 32, 32, 8);
     g.fillStyle = skin.base; g.fill();
-    g.lineWidth = 2.5; g.strokeStyle = L >= 3 ? '#e0a816' : skin.trim; g.stroke();
+    g.lineWidth = [2.5, 3.4, 3.6, 4][Math.min(3, L)]; g.strokeStyle = tier; g.stroke();
     g.shadowBlur = 0;
-    if (L >= 1) { // inner ring
+    if (L >= 1) { // inner ring in the tier colour
       roundRect(g, -12.5, -12.5, 25, 25, 6);
-      g.lineWidth = 1.2; g.strokeStyle = L >= 3 ? 'rgba(224,168,22,0.8)' : 'rgba(0,0,0,0.18)'; g.stroke();
+      g.lineWidth = 1.6; g.strokeStyle = tier; g.globalAlpha = 0.85; g.stroke(); g.globalAlpha = 1;
     }
-    if (L >= 2) { // corner studs: silver at 2, gold at 3
-      g.fillStyle = L >= 3 ? '#ffd35c' : '#d7dde6';
+    if (L >= 2) { // corner studs
+      g.fillStyle = L >= 3 ? '#fff1a8' : '#ffffff';
       g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 0.8;
       for (const [cx, cy] of [[-12, -12], [12, -12], [-12, 12], [12, 12]]) { g.beginPath(); g.arc(cx, cy, 2.3, 0, 7); g.fill(); g.stroke(); }
     }
