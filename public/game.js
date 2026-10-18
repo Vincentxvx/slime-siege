@@ -728,6 +728,8 @@
       R.slime(g, GD.ENEMY_ORDER[e[1]], p.x * T, p.y * T, T, {
         time: t, id: e[0], hp: e[3], slowed: e[4], dx: p.dx, dy: p.dy,
         flash: hit ? Math.max(0, 1 - (t - hit) / HIT_FLASH) : 0,
+        // sent slimes wear a headband: pink in your lane (from your opponent), lime in theirs (from you)
+        band: e[5] ? (bi === G.you ? '#ff6fa8' : '#9be15d') : null,
       });
     }
 

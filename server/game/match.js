@@ -458,7 +458,7 @@ class Match {
       mine: mineGold,
       cds: GD.SENDS.map((p) => r2(Math.max(0, (b.sendReady[p.id] || 0) - this.time))),
       towers: b.towers.map((t) => [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target]]),
-      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.slowUntil > this.time ? 1 : 0]),
+      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.slowUntil > this.time ? 1 : 0, e.sent ? 1 : 0]),
       ev: b.events,
     };
   }

@@ -245,6 +245,7 @@
 
   // Draw a slime centred at (x,y) px.
   // opts.flash (0-1): just took damage, so it squishes and flashes white
+  // opts.band (colour): sent by a player, so it wears a headband in that colour
   function slime(g, type, x, y, size, opts) {
     opts = opts || {};
     const E = GD.ENEMIES[type];
@@ -258,10 +259,13 @@
     g.fillStyle = 'rgba(0,0,0,0.22)';
     g.beginPath(); g.ellipse(0, ry * 0.85, rx * 0.95, ry * 0.3, 0, 0, 7); g.fill();
     // body: flat-bottomed dome
-    g.beginPath();
-    g.moveTo(-rx, ry * 0.7);
-    g.bezierCurveTo(-rx * 1.05, -ry * 0.9, rx * 1.05, -ry * 0.9, rx, ry * 0.7);
-    g.quadraticCurveTo(0, ry * 1.05, -rx, ry * 0.7);
+    const body = () => {
+      g.beginPath();
+      g.moveTo(-rx, ry * 0.7);
+      g.bezierCurveTo(-rx * 1.05, -ry * 0.9, rx * 1.05, -ry * 0.9, rx, ry * 0.7);
+      g.quadraticCurveTo(0, ry * 1.05, -rx, ry * 0.7);
+    };
+    body();
     const grad = g.createRadialGradient(-rx * 0.35, -ry * 0.35, r * 0.1, 0, 0, r * 1.3);
     grad.addColorStop(0, lighten(E.color, 0.45));
     grad.addColorStop(0.55, E.color);
@@ -283,6 +287,21 @@
       g.beginPath(); g.moveTo(-cw, cy); g.lineTo(-cw, cy - r * 0.35); g.lineTo(-cw * 0.5, cy - r * 0.18);
       g.lineTo(0, cy - r * 0.45); g.lineTo(cw * 0.5, cy - r * 0.18); g.lineTo(cw, cy - r * 0.35); g.lineTo(cw, cy); g.closePath();
       g.fill(); g.stroke();
+    }
+    if (opts.band) { // headband behind the eyes, knot tails trailing behind
+      const top = -ry * 0.36, bot = ry * 0.06, line = Math.max(1, size / 32);
+      g.save(); body(); g.clip();
+      g.fillStyle = opts.band; g.fillRect(-rx * 1.2, top, rx * 2.4, bot - top);
+      g.strokeStyle = '#1e1530'; g.lineWidth = line;
+      g.beginPath(); g.moveTo(-rx * 1.2, top); g.lineTo(rx * 1.2, top); g.moveTo(-rx * 1.2, bot); g.lineTo(rx * 1.2, bot); g.stroke();
+      g.restore();
+      const side = (opts.dx || 0) > 0.1 ? -1 : 1, kx = side * rx * 0.86, ky = (top + bot) / 2;
+      g.fillStyle = opts.band; g.strokeStyle = '#1e1530'; g.lineWidth = line;
+      for (const [tx, ty] of [[0.62, -0.26], [0.55, 0.3]]) {
+        g.beginPath(); g.moveTo(kx, ky - r * 0.1);
+        g.lineTo(kx + side * r * tx, ky + r * (ty - 0.12)); g.lineTo(kx + side * r * tx * 0.85, ky + r * (ty + 0.12));
+        g.lineTo(kx, ky + r * 0.1); g.closePath(); g.fill(); g.stroke();
+      }
     }
     // eyes, looking along the path
     const lx = (opts.dx || 1) * r * 0.06, ly = (opts.dy || 0) * r * 0.06;
