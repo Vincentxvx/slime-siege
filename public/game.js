@@ -301,14 +301,14 @@
       } else if (tw) {
         const type = GD.TOWER_ORDER[tw[1]], T0 = GD.TOWERS[type], level = tw[4];
         const next = T0.upgrades[level];
-        const pips = T0.upgrades.map((u, i) => `<i class="${i < level ? 'done' : ''}" title="${u.name}: ${u.desc}"></i>`).join('');
+        const lvlLabel = level >= 3 ? 'Level MAX' : `Level ${level + 1}`;
         const upHtml = next
           ? `<div class="next-up"><div><b>${next.name}</b><small>${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
           : '<div class="next-up maxed"><b>Fully upgraded</b></div>';
         const modes = T0.base.kind === 'mine' || T0.base.kind === 'pulse' ? '' :
           `<div class="seg" role="group" aria-label="Targeting">${GD.TARGET_MODES.map((m, i) =>
             `<button data-mode="${m}" class="${tw[5] === i ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>`;
-        panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="pips" aria-label="Level ${level} of 3">${pips}</span><button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button></div>
+        panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span><button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button></div>
           ${statChips(GD.towerStats(type, level))}${modes}${upHtml}`;
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
@@ -464,7 +464,7 @@
       const cx = (col + 0.5) * T, cy = (row + 0.5) * T;
       if (s.range > 0 && s.range < 50) ring(g, cx, cy, s.range * T, ok ? 'rgba(155,225,93,0.18)' : 'rgba(255,92,92,0.18)', ok ? '#9be15d' : '#ff5c5c');
       g.globalAlpha = 0.75;
-      R.tower(g, G.placing, 0, cx, cy, skin, 0, T, t);
+      R.tower(g, G.placing, 0, cx, cy, skin, 0, T, t, { noBadge: true });
       g.globalAlpha = 1;
       if (!ok) { g.fillStyle = 'rgba(255,60,60,0.35)'; g.fillRect(col * T, row * T, T, T); }
     }

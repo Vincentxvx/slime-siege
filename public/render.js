@@ -80,81 +80,155 @@
   }
 
   // Draw a tower centred at (x,y) pixels. size = tile size in px.
-  function tower(g, type, level, x, y, skinId, angle, size, time) {
+  // Draw a tower centred at (x,y) px. size = tile size in px.
+  // level 0 = base, 1-3 = upgrades bought. Each upgrade changes the look; a badge shows the level.
+  function tower(g, type, level, x, y, skinId, angle, size, time, opts) {
     const skin = GD.SKINS[skinId] || GD.SKINS.skin_classic;
     const s = size / 40;
+    const L = level || 0, t = time || 0;
     g.save();
     g.translate(x, y); g.scale(s, s);
+    // shadow + plate (plate grows fancier with level)
     g.fillStyle = 'rgba(0,0,0,0.22)';
     g.beginPath(); g.ellipse(1, 14, 16, 5, 0, 0, 7); g.fill();
     if (skin.glow) { g.shadowColor = skin.trim; g.shadowBlur = 10; }
+    if (L >= 3) { g.shadowColor = '#ffd35c'; g.shadowBlur = 8 + 3 * Math.sin(t * 3); }
     roundRect(g, -16, -16, 32, 32, 8);
     g.fillStyle = skin.base; g.fill();
-    g.lineWidth = 2.5; g.strokeStyle = skin.trim; g.stroke();
+    g.lineWidth = 2.5; g.strokeStyle = L >= 3 ? '#e0a816' : skin.trim; g.stroke();
     g.shadowBlur = 0;
+    if (L >= 1) { // inner ring
+      roundRect(g, -12.5, -12.5, 25, 25, 6);
+      g.lineWidth = 1.2; g.strokeStyle = L >= 3 ? 'rgba(224,168,22,0.8)' : 'rgba(0,0,0,0.18)'; g.stroke();
+    }
+    if (L >= 2) { // corner studs: silver at 2, gold at 3
+      g.fillStyle = L >= 3 ? '#ffd35c' : '#d7dde6';
+      g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 0.8;
+      for (const [cx, cy] of [[-12, -12], [12, -12], [-12, 12], [12, 12]]) { g.beginPath(); g.arc(cx, cy, 2.3, 0, 7); g.fill(); g.stroke(); }
+    }
     const a = angle || 0;
     switch (type) {
-      case 'archer':
-        g.fillStyle = '#b57c45'; g.beginPath(); g.arc(0, 0, 10, 0, 7); g.fill();
-        g.strokeStyle = '#7a4d24'; g.lineWidth = 2; g.stroke();
+      case 'archer': {
+        g.fillStyle = L >= 2 ? '#8c5a2b' : '#b57c45'; g.beginPath(); g.arc(0, 0, 10, 0, 7); g.fill();
+        g.strokeStyle = L >= 3 ? '#e0a816' : '#7a4d24'; g.lineWidth = 2; g.stroke();
         g.rotate(a);
-        g.strokeStyle = '#3d2610'; g.lineWidth = 2.6;
-        g.beginPath(); g.arc(-3, 0, 10, -1.15, 1.15); g.stroke();
+        const br = L >= 2 ? 11.5 : 10; // Quick Draw: bigger bow
+        g.strokeStyle = L >= 2 ? '#2a1708' : '#3d2610'; g.lineWidth = L >= 2 ? 3.2 : 2.6;
+        g.beginPath(); g.arc(-3, 0, br, -1.15, 1.15); g.stroke();
         g.strokeStyle = '#eee'; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(-3 + 10 * Math.cos(1.15), -10 * Math.sin(1.15)); g.lineTo(-3 + 10 * Math.cos(1.15), 10 * Math.sin(1.15)); g.stroke();
-        g.strokeStyle = '#f5f0e0'; g.lineWidth = 2;
-        g.beginPath(); g.moveTo(-1, 0); g.lineTo(13, 0); g.stroke();
+        const ex = -3 + br * Math.cos(1.15), ey = br * Math.sin(1.15);
+        g.beginPath(); g.moveTo(ex, -ey); g.lineTo(ex, ey); g.stroke();
+        const arrows = L >= 3 ? [-0.32, 0, 0.32] : [0]; // Eagle Eye: three arrows
+        for (const off of arrows) {
+          g.save(); g.rotate(off);
+          g.strokeStyle = '#f5f0e0'; g.lineWidth = 2;
+          g.beginPath(); g.moveTo(-1, 0); g.lineTo(13, 0); g.stroke();
+          if (L >= 1) { g.fillStyle = '#c9d3df'; g.beginPath(); g.moveTo(16, 0); g.lineTo(12, -2.6); g.lineTo(12, 2.6); g.fill(); } // Sharp Arrows: metal tips
+          g.restore();
+        }
+        if (L >= 3) { g.rotate(-a); g.fillStyle = '#e0453a'; g.beginPath(); g.moveTo(-8, -9); g.quadraticCurveTo(-14, -15, -6, -16); g.quadraticCurveTo(-7, -12, -8, -9); g.fill(); } // feather
         break;
-      case 'cannon':
-        g.fillStyle = '#454c5c'; g.beginPath(); g.arc(0, 0, 11, 0, 7); g.fill();
+      }
+      case 'cannon': {
+        const r = L >= 1 ? 12.5 : 11; // Bigger Bombs
+        g.fillStyle = '#454c5c'; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill();
+        if (L >= 3) { g.strokeStyle = '#e0a816'; g.lineWidth = 2; g.stroke(); }
         g.rotate(a);
-        g.fillStyle = '#2a2f3a'; roundRect(g, -2, -5, 18, 10, 3); g.fill();
-        g.fillStyle = '#1a1d24'; g.fillRect(13, -6, 4, 12);
+        const barrel = (yOff, w) => {
+          g.fillStyle = '#2a2f3a'; roundRect(g, -2, yOff - w / 2, 18, w, 3); g.fill();
+          g.fillStyle = '#1a1d24'; g.fillRect(13, yOff - w / 2 - 1, 4, w + 2);
+          if (L >= 3) { g.fillStyle = '#e0a816'; g.fillRect(6, yOff - w / 2, 2, w); g.fillRect(10, yOff - w / 2, 2, w); }
+        };
+        if (L >= 2) { barrel(-4.5, 7); barrel(4.5, 7); } // Rapid Reload: twin barrels
+        else barrel(0, L >= 1 ? 11 : 10);
         g.fillStyle = '#6a7386'; g.beginPath(); g.arc(-3, -3, 3, 0, 7); g.fill();
         break;
+      }
       case 'frost': {
-        g.fillStyle = '#a8e6ff'; g.strokeStyle = '#3f9fd1'; g.lineWidth = 2;
+        const r = L >= 3 ? 13.5 : 12;
+        g.fillStyle = L >= 1 ? '#7fd2ff' : '#a8e6ff'; g.strokeStyle = L >= 1 ? '#2a7fb8' : '#3f9fd1'; g.lineWidth = 2;
+        if (L >= 3) { g.shadowColor = '#bff0ff'; g.shadowBlur = 10; }
         g.beginPath();
-        for (let i = 0; i < 6; i++) { const t = (i / 6) * Math.PI * 2 + Math.PI / 6; g.lineTo(Math.cos(t) * 12, Math.sin(t) * 12); }
-        g.closePath(); g.fill(); g.stroke();
+        for (let i = 0; i < 6; i++) { const q = (i / 6) * Math.PI * 2 + Math.PI / 6; g.lineTo(Math.cos(q) * r, Math.sin(q) * r); }
+        g.closePath(); g.fill(); g.stroke(); g.shadowBlur = 0;
+        if (L >= 2) { // Frostbite: ice shards
+          g.fillStyle = '#e8fbff';
+          for (let i = 0; i < 6; i++) {
+            const q = (i / 6) * Math.PI * 2;
+            g.beginPath(); g.moveTo(Math.cos(q) * (r + 4), Math.sin(q) * (r + 4));
+            g.lineTo(Math.cos(q + 0.18) * (r - 1), Math.sin(q + 0.18) * (r - 1)); g.lineTo(Math.cos(q - 0.18) * (r - 1), Math.sin(q - 0.18) * (r - 1)); g.fill();
+          }
+        }
         g.strokeStyle = '#ffffff'; g.lineWidth = 1.6;
-        for (let i = 0; i < 3; i++) { const t = (i / 3) * Math.PI + (time || 0) * 0.6; g.beginPath(); g.moveTo(Math.cos(t) * 8, Math.sin(t) * 8); g.lineTo(-Math.cos(t) * 8, -Math.sin(t) * 8); g.stroke(); }
+        for (let i = 0; i < 3; i++) { const q = (i / 3) * Math.PI + t * 0.6; g.beginPath(); g.moveTo(Math.cos(q) * 8, Math.sin(q) * 8); g.lineTo(-Math.cos(q) * 8, -Math.sin(q) * 8); g.stroke(); }
         break;
       }
-      case 'sniper':
-        g.fillStyle = '#66753f'; g.beginPath(); g.arc(0, 0, 9, 0, 7); g.fill();
-        g.strokeStyle = '#3e4825'; g.lineWidth = 2; g.stroke();
+      case 'sniper': {
+        g.fillStyle = L >= 3 ? '#4a5530' : '#66753f'; g.beginPath(); g.arc(0, 0, 9, 0, 7); g.fill();
+        g.strokeStyle = L >= 3 ? '#e0a816' : '#3e4825'; g.lineWidth = 2; g.stroke();
         g.rotate(a);
-        g.fillStyle = '#262b19'; g.fillRect(-2, -2.5, 21, 5);
-        g.fillStyle = '#111'; g.fillRect(2, -6.5, 8, 4);
-        g.fillStyle = '#7fd3ff'; g.fillRect(9, -6, 1.5, 3);
-        break;
-      case 'tesla': {
-        g.fillStyle = '#4a4f66'; g.beginPath(); g.arc(0, 0, 11, 0, 7); g.fill();
-        g.strokeStyle = '#c99a3a'; g.lineWidth = 2;
-        for (const r of [8.5, 6]) { g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke(); }
-        const p = 0.7 + 0.3 * Math.sin((time || 0) * 9);
-        g.shadowColor = '#ffe766'; g.shadowBlur = 10 * p;
-        g.fillStyle = '#fff3a0'; g.beginPath(); g.arc(0, 0, 4.2, 0, 7); g.fill();
-        g.shadowBlur = 0;
+        const len = L >= 1 ? 24 : 21; // Hollow Points: longer barrel
+        g.fillStyle = L >= 3 ? '#8a6410' : '#262b19'; g.fillRect(-2, -2.5, len, 5);
+        g.fillStyle = '#111'; g.fillRect(len - 4, -3.2, 3, 6.4); // muzzle
+        g.fillStyle = '#111'; g.fillRect(2, L >= 2 ? -7.5 : -6.5, L >= 2 ? 11 : 8, L >= 2 ? 5 : 4); // Bolt Action: bigger scope
+        g.fillStyle = '#7fd3ff'; g.fillRect(L >= 2 ? 12 : 9, L >= 2 ? -7 : -6, 1.5, L >= 2 ? 4 : 3);
+        if (L >= 3) { g.strokeStyle = 'rgba(255,60,60,0.55)'; g.lineWidth = 1; g.beginPath(); g.moveTo(len, 0); g.lineTo(len + 14, 0); g.stroke(); } // laser
         break;
       }
-      case 'mine':
-        g.fillStyle = '#7d5532'; roundRect(g, -12, -10, 24, 20, 4); g.fill();
+      case 'tesla': {
+        g.fillStyle = L >= 3 ? '#3b3260' : '#4a4f66'; g.beginPath(); g.arc(0, 0, 11, 0, 7); g.fill();
+        g.strokeStyle = L >= 3 ? '#e0a816' : '#c99a3a'; g.lineWidth = 2;
+        const rings = L >= 1 ? [9.5, 7.5, 5.5] : [8.5, 6]; // Arc Coil: extra ring
+        for (const r of rings) { g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke(); }
+        const p = 0.7 + 0.3 * Math.sin(t * 9);
+        const orb = L >= 2 ? 5.4 : 4.2; // Overcharge: bigger orb
+        g.shadowColor = L >= 3 ? '#c9a7ff' : '#ffe766'; g.shadowBlur = (L >= 2 ? 16 : 10) * p;
+        g.fillStyle = L >= 3 ? '#f1e6ff' : '#fff3a0'; g.beginPath(); g.arc(0, 0, orb, 0, 7); g.fill();
+        g.shadowBlur = 0;
+        if (L >= 3) { // Storm Core: crackling arcs
+          g.strokeStyle = `rgba(220,200,255,${0.5 + 0.4 * p})`; g.lineWidth = 1.2;
+          for (let i = 0; i < 3; i++) {
+            const q = t * 4 + i * 2.1;
+            g.beginPath(); g.moveTo(Math.cos(q) * 6, Math.sin(q) * 6);
+            g.lineTo(Math.cos(q + 0.3) * 10, Math.sin(q + 0.3) * 10 + 1.5); g.lineTo(Math.cos(q + 0.5) * 14, Math.sin(q + 0.5) * 14);
+            g.stroke();
+          }
+        }
+        break;
+      }
+      case 'mine': {
+        g.fillStyle = L >= 2 ? '#6b4526' : '#7d5532'; roundRect(g, -12, -10, 24, 20, 4); g.fill();
+        if (L >= 1) { g.strokeStyle = '#4a2e15'; g.lineWidth = 1.5; for (const yy of [-4, 2]) { g.beginPath(); g.moveTo(-12, yy); g.lineTo(-7, yy); g.moveTo(7, yy); g.lineTo(12, yy); g.stroke(); } } // support beams
         g.fillStyle = '#2b1a0e'; g.beginPath(); g.moveTo(-7, 10); g.lineTo(-7, 0); g.arc(0, 0, 7, Math.PI, 0); g.lineTo(7, 10); g.fill();
         g.fillStyle = '#ffd34d';
-        for (const [px, py, pr] of [[-3, 6, 2.6], [3, 7, 2.2], [0, 3, 2]]) { g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill(); }
+        const nuggets = [[-3, 6, 2.6], [3, 7, 2.2], [0, 3, 2]];
+        if (L >= 2) nuggets.push([-5, 8.5, 1.8], [5, 4, 1.8], [1, 8.5, 2]);
+        for (const [px, py, pr] of nuggets) { g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill(); }
         g.strokeStyle = '#d9d2c5'; g.lineWidth = 2;
         g.beginPath(); g.moveTo(5, -14); g.lineTo(13, -6); g.stroke();
+        if (L >= 3) { // Mother Lode: sparkles + gold sign
+          g.fillStyle = '#ffd35c'; roundRect(g, -10, -15, 11, 6, 2); g.fill();
+          for (let i = 0; i < 3; i++) {
+            const k = (t * 1.5 + i / 3) % 1, sx = -8 + i * 8, sy = 6 - k * 14;
+            g.globalAlpha = 1 - k; g.fillStyle = '#fff7c2';
+            g.beginPath(); g.moveTo(sx, sy - 2.5); g.lineTo(sx + 1, sy); g.lineTo(sx, sy + 2.5); g.lineTo(sx - 1, sy); g.closePath(); g.fill();
+          }
+          g.globalAlpha = 1;
+        }
         break;
+      }
     }
     g.restore();
-    if (level > 0) {
+    // level badge (bottom-right corner)
+    if (!(opts && opts.noBadge)) {
       g.save(); g.translate(x, y); g.scale(s, s);
-      for (let i = 0; i < level; i++) {
-        g.fillStyle = '#ffd35c'; g.strokeStyle = '#2b1d00'; g.lineWidth = 1;
-        g.beginPath(); g.arc(-8 + i * 8, 15, 3, 0, 7); g.fill(); g.stroke();
-      }
+      const max = L >= 3, label = max ? 'MAX' : String(L + 1);
+      const w = max ? 19 : 10;
+      roundRect(g, 15 - w, 9, w, 9, 3);
+      g.fillStyle = max ? '#ffd35c' : L >= 1 ? '#9be15d' : '#efe7ff';
+      g.fill(); g.strokeStyle = '#1e1530'; g.lineWidth = 1.2; g.stroke();
+      g.fillStyle = '#1e1530'; g.font = 'bold 7px Lexend, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(label, 15 - w / 2, 13.8);
       g.restore();
     }
   }
@@ -230,7 +304,7 @@
     const dpr = window.devicePixelRatio || 1;
     c.width = c.height = px * dpr; c.style.width = c.style.height = px + 'px';
     const g = c.getContext('2d'); g.scale(dpr, dpr);
-    tower(g, type, 0, px / 2, px / 2 - 1, skin, -0.6, px * 0.82, 0);
+    tower(g, type, 0, px / 2, px / 2 - 1, skin, -0.6, px * 0.82, 0, { noBadge: true });
     return c;
   }
   function slimeIcon(type, px) {

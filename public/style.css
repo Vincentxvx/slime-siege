@@ -400,3 +400,6 @@ input {
 .invite-card { position: fixed; right: 20px; bottom: 20px; z-index: 30; width: min(330px, calc(100% - 32px)); display: grid; gap: 10px; border-color: var(--line); animation: pop .2s ease-out; }
 .invite-card p { margin: 0; }
 .invite-card b { color: var(--lime); }
+
+.lvl-badge { font-size: 12px; font-weight: 700; background: var(--ink); color: var(--lime); border-radius: 6px; padding: 1px 7px; }
+.lvl-badge.max { background: var(--gold); color: #2b1d00; }
