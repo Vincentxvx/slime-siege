@@ -244,12 +244,13 @@
   }
 
   // Draw a slime centred at (x,y) px.
+  // opts.flash (0-1): just took damage, so it squishes and flashes white
   function slime(g, type, x, y, size, opts) {
     opts = opts || {};
     const E = GD.ENEMIES[type];
     const r = E.r * size;
-    const t = opts.time || 0, id = opts.id || 0;
-    const wob = Math.sin(t * 9 + id * 1.7) * 0.09;
+    const t = opts.time || 0, id = opts.id || 0, flash = opts.flash || 0;
+    const wob = Math.sin(t * 9 + id * 1.7) * 0.09 + flash * 0.14;
     const rx = r * (1 + wob), ry = r * (1 - wob);
     g.save();
     g.translate(x, y + r * 0.1);
@@ -267,6 +268,7 @@
     grad.addColorStop(1, darken(E.color, 0.35));
     g.fillStyle = grad; g.fill();
     g.lineWidth = Math.max(1, size / 30); g.strokeStyle = darken(E.color, 0.55); g.stroke();
+    if (flash > 0) { g.fillStyle = `rgba(255,255,255,${0.75 * flash})`; g.fill(); }
     if (type === 'armored') {
       g.fillStyle = '#5b6472';
       g.beginPath(); g.moveTo(-rx * 0.95, -ry * 0.05);

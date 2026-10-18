@@ -9,13 +9,14 @@
     active: false, info: null, net: null, you: 0,
     prev: null, cur: null, prevAt: 0, curAt: 0, interval: 0.1,
     placing: null, hover: null, selected: null,
-    effects: [], aim: [{}, {}], built: false, panelKey: '', lastRound: -1,
+    effects: [], aim: [{}, {}], hits: [new Map(), new Map()], built: false, panelKey: '', lastRound: -1,
   };
+  const HIT_FLASH = 0.16; // seconds a slime flashes white after losing HP
 
   // ---------- setup ----------
   function start(info, net) {
     Object.assign(G, {
-      active: true, info, net, you: info.you, prev: null, cur: null, effects: [], aim: [{}, {}],
+      active: true, info, net, you: info.you, prev: null, cur: null, effects: [], aim: [{}, {}], hits: [new Map(), new Map()],
       placing: null, hover: null, selected: null, panelKey: '', lastRound: -1, ended: false, previewRound: -1,
     });
     G.map = GD.MAPS[info.map];
@@ -296,7 +297,9 @@
       b.tmap = new Map(b.towers.map((x) => [x[0], x]));
       b.emap = new Map(b.enemies.map((x) => [x[0], x]));
       processEvents(i, b);
-      if (G.prev) deaths(i, G.prev.boards[i], b);
+      // the previous snapshot has no maps if it was from the picking phase
+      const pb = G.prev && G.prev.boards[i];
+      if (pb && pb.emap) { deaths(i, pb, b); hits(i, pb, b); }
     });
     if (G.selected && !G.cur.boards[G.you].tmap.has(G.selected)) G.selected = null;
     updateHud();
@@ -361,6 +364,17 @@
       if (bi === G.you) window.Sfx.play('pop');
       G.effects.push({ b: bi, k: 'splat', x1: p.x * T, y1: p.y * T, color: GD.ENEMIES[type].color, r: GD.ENEMIES[type].r * T, t0: t, dur: 0.35, seed: e[0] });
     }
+  }
+
+  // Slimes whose HP dropped since the last snapshot flash white for a moment
+  // (no flash means the shots bounced off, e.g. arrows on a Knight's armor)
+  function hits(bi, prevB, curB) {
+    const t = now(), m = G.hits[bi];
+    for (const e of curB.enemies) {
+      const pe = prevB.emap.get(e[0]);
+      if (pe && e[3] < pe[3]) m.set(e[0], t);
+    }
+    for (const [id, at] of m) if (t - at > HIT_FLASH) m.delete(id);
   }
 
   // ---------- HUD & panels ----------
@@ -676,7 +690,11 @@
       const pe = pb && pb.emap && pb.emap.get(e[0]);
       if (pe) d = pe[2] / 100 + (d - pe[2] / 100) * a;
       const p = GD.posAt(G.map, d);
-      R.slime(g, GD.ENEMY_ORDER[e[1]], p.x * T, p.y * T, T, { time: t, id: e[0], hp: e[3], slowed: e[4], dx: p.dx, dy: p.dy });
+      const hit = G.hits[bi].get(e[0]);
+      R.slime(g, GD.ENEMY_ORDER[e[1]], p.x * T, p.y * T, T, {
+        time: t, id: e[0], hp: e[3], slowed: e[4], dx: p.dx, dy: p.dy,
+        flash: hit ? Math.max(0, 1 - (t - hit) / HIT_FLASH) : 0,
+      });
     }
 
     for (const f of G.effects) if (f.b === bi) effect(g, f, t);
