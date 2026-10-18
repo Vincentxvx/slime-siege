@@ -561,7 +561,7 @@
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
         panel.querySelector('[data-act=sell]').onclick = () => act({ type: 'sell', id: tw[0] });
       } else if (G.spectator) {
-        panel.innerHTML = `<h3>Watching ${esc(G.info.watching)}</h3><p class="muted">You're seeing ${esc(G.info.watching)}'s lane. Their opponent's lane is in the small view above. Click a tower to see its stats.</p>`;
+        panel.innerHTML = `<h3>Watching ${esc(G.info.watching)}</h3><p class="muted">You're seeing ${esc(G.info.watching)}'s lane. Their opponent's lane is in the smaller view. Click a tower to see its stats.</p>`;
       } else {
         panel.innerHTML = `<h3>Defend your lane</h3><p class="muted">Pick a tower (keys 1–${G.me.unlocked.length}) and click a free tile.
           Click a placed tower to upgrade or sell it. Sending slimes pressures your opponent and raises your income.</p>

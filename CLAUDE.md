@@ -102,7 +102,7 @@ Admin (only `ADMIN_USERS`): Admin tab (edit coins/XP/level/rating/stats, unlock 
 - Permissions: `isAdmin` from env only; per-user flags in the user doc; exposed to the client via `publicProfile` (`isAdmin`, `ideas`, `powers`, `mapEditor`).
 - Snapshots are compact arrays (see `boardSnap`); opponent gold and cooldowns are hidden.
 - UI copy: plain English, sentence case, no emoji. Visual style: deep plum background, chunky 3px dark outlines with hard offset shadows, lime (#9be15d) primary, pink for opponent/warnings, gold for currency; fonts Bowlby One (display) + Lexend.
-- Keep the game layout fitting a 1366×640 viewport without scrolling (vertical tower bar | canvas | side column).
+- Keep the game layout fitting a 1366×640 viewport without scrolling. Two layouts (CSS grid areas on `.arena`): screens at least 830px tall use tower cards | canvas | opponent mini view + sends + selected tower panel; shorter screens move the tower panel under the tower cards (2×2) into a 192px left column. Check every tower at every level: the tower panel is the tallest part.
 - Commit messages: short imperative summary + bullet details; push to `main`.
 
 ## Communicating with Vincent
