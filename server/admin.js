@@ -15,7 +15,7 @@ function summary(u) {
     id: u.id, username: u.username, level: GD.levelInfo(u.xp).level, xp: u.xp, coins: u.coins,
     wins: u.wins, losses: u.losses, botWins: u.botWins, rating: u.rating || 1000, games: u.games,
     bestRound: u.bestRound, createdAt: u.createdAt, banned: !!u.banned, admin: isAdmin(u),
-    unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner, ideasAccess: !!u.ideasAccess,
+    unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner, ideasAccess: !!u.ideasAccess, cheatAccess: !!u.cheatAccess,
   };
 }
 
@@ -59,6 +59,10 @@ function mount(app, { store, lobby, authed, wrap }) {
     if (typeof b.ideasAccess === 'boolean' && b.ideasAccess !== !!u.ideasAccess) {
       u.ideasAccess = b.ideasAccess;
       changes.push(b.ideasAccess ? 'ideas access on' : 'ideas access off');
+    }
+    if (typeof b.cheatAccess === 'boolean' && b.cheatAccess !== !!u.cheatAccess) {
+      u.cheatAccess = b.cheatAccess;
+      changes.push(b.cheatAccess ? 'powers on' : 'powers off');
     }
     if (typeof b.banned === 'boolean' && b.banned !== !!u.banned) {
       if (u.id === req.user.id) return res.status(400).json({ error: "You can't ban yourself" });

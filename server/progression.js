@@ -34,6 +34,7 @@ function publicProfile(u) {
     history: u.history || [], dailyAvailable: u.lastDailyWin !== today(), rating: u.rating || 1000,
     isAdmin: isAdminName(u.username),
     ideas: isAdminName(u.username) || !!u.ideasAccess,
+    powers: isAdminName(u.username) || !!u.cheatAccess,
   };
 }
 

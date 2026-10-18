@@ -243,6 +243,7 @@ class Match {
       case 'sell': return this.sell(b, a.id | 0);
       case 'target': return this.setTarget(b, a.id | 0, String(a.mode));
       case 'send': return this.send(idx, b, String(a.pack));
+      case 'power': return this.power(idx, b, a);
       default: return { ok: false, error: 'Unknown action' };
     }
   }
@@ -315,6 +316,51 @@ class Match {
     }
     o.queue.sort((a, c) => a.t - c.t);
     o.events.push(['i', pi]);
+    return { ok: true };
+  }
+
+  // ---------------- admin powers (only for players with cheats enabled) ----------------
+  power(idx, b, a) {
+    if (!this.players[idx].cheats) return { ok: false, error: 'You do not have powers' };
+    const n = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(Number(v) || 0)));
+    const o = this.opp(idx);
+    let done = true;
+    switch (a.power) {
+      case 'gold': b.gold = n(b.gold + n(a.amount, -1e7, 1e7), 0, 1e8); break;
+      case 'lives': b.lives = n(b.lives + n(a.amount, -9999, 9999), 1, 99999); break;
+      case 'income': b.income = n(b.income + n(a.amount, -1e5, 1e5), 0, 1e6); break;
+      case 'spawn': {
+        const type = String(a.enemy);
+        if (!GD.ENEMIES[type]) return { ok: false, error: 'Unknown slime' };
+        const count = n(a.count, 1, 300);
+        const target = a.target === 'self' ? b : o;
+        const hpMul = GD.hpMulForRound(Math.max(1, this.round));
+        target.sendCursor = Math.max(target.sendCursor, Math.max(0, this.time) + 0.3);
+        const gap = Math.max(0.08, Math.min(0.6, 0.8 / Math.sqrt(GD.ENEMIES[type].speed * 2)));
+        for (let i = 0; i < count; i++) { target.queue.push({ t: target.sendCursor, type, hpMul, sent: true }); target.sendCursor += gap; }
+        target.queue.sort((x, y) => x.t - y.t);
+        break;
+      }
+      case 'round':
+        if (this.time < 0) this.time = 0;
+        this.nextRoundAt = this.time;
+        break;
+      case 'maxTower': {
+        const t = b.towers.find((x) => x.id === (a.id | 0));
+        if (!t) return { ok: false, error: 'Select one of your towers first' };
+        t.level = GD.TOWERS[t.type].upgrades.length;
+        t.stats = GD.towerStats(t.type, t.level);
+        break;
+      }
+      case 'clear': { // remove every slime on your own board
+        b.enemies = []; b.queue = b.queue.filter((q) => !q.sent);
+        break;
+      }
+      default: done = false;
+    }
+    if (!done) return { ok: false, error: 'Unknown power' };
+    if (!this.cheated) this.cheated = true;
+    if (!this.cheatNotified) { this.cheatNotified = true; o.events.push(['x']); }
     return { ok: true };
   }
 

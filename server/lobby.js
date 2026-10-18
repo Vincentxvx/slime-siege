@@ -21,6 +21,7 @@ class Lobby {
     this.userMatch = new Map(); // uid -> matchId
     this.rematch = new Map();   // uid -> { opp uid, at, wants }
     this.invites = new Map();   // "target:from" -> time
+    this.spectating = new Map(); // spectator uid -> matchId
     this.speed = Math.max(1, Number(process.env.GAME_SPEED) || 1); // >1 only for testing
     this.last = Date.now();
     this.acc = 0;
@@ -85,11 +86,14 @@ class Lobby {
     });
     socket.on('rematch', () => this.requestRematch(uid));
     friends.attachSocket(this, socket, uid);
+    socket.on('spectate', (id) => this.spectate(uid, String(id || '')).catch((e) => console.error(e)));
+    socket.on('stopSpectate', () => this.stopSpectate(uid));
     socket.on('disconnect', () => {
       if (this.sockets.get(uid) !== socket) return;
       const r = this.rematch.get(uid);
       if (r) this.emitTo([r.opp], 'rematchStatus', { state: 'left' });
       this.rematch.delete(uid);
+      this.stopSpectate(uid);
       this.sockets.delete(uid);
       this.clearPending(uid);
       this.withMatch(uid, (match, idx) => match.setConnected(idx, false));
@@ -121,6 +125,42 @@ class Lobby {
     }
     const u = await this.store.getById(uid);
     if (u) s.emit('profile', prog.publicProfile(u));
+  }
+
+  // ---------- spectating (friends, or admins) ----------
+  async spectate(uid, targetId) {
+    const s = this.sockets.get(uid);
+    const err = (m) => s && s.emit('errorMsg', m);
+    const me = await this.store.getById(uid);
+    if (!me) return;
+    const isFriend = (me.friends || []).includes(targetId);
+    if (!isFriend && !prog.publicProfile(me).isAdmin) return err('You can only watch friends');
+    if (this.busy(uid)) return err('Finish your own match first');
+    const entry = this.matches.get(this.userMatch.get(targetId));
+    if (!entry) return err('Your friend is not in a match right now');
+    this.stopSpectate(uid);
+    this.clearPending(uid);
+    const idx = entry.uids.indexOf(targetId);
+    entry.spectators.set(uid, idx);
+    this.spectating.set(uid, entry.match.id);
+    const info = this.startInfo(entry.match, idx);
+    info.players.forEach((p) => { p.cheats = false; });
+    info.spectator = true;
+    info.watching = entry.match.players[idx].name;
+    s.emit('spectateStart', info);
+    this.emitStatus(uid);
+    this.emitTo(entry.uids, 'spectators', { count: entry.spectators.size });
+  }
+
+  stopSpectate(uid) {
+    const mid = this.spectating.get(uid);
+    if (!mid) return;
+    this.spectating.delete(uid);
+    const entry = this.matches.get(mid);
+    if (entry && entry.spectators) {
+      entry.spectators.delete(uid);
+      this.emitTo(entry.uids, 'spectators', { count: entry.spectators.size });
+    }
   }
 
   emitTo(uids, ev, data) {
@@ -215,19 +255,32 @@ class Lobby {
         const u = await this.store.getById(e.uid);
         if (!u) { entries.forEach((x) => x.uid && this.userMatch.get(x.uid) === 'pending' && this.userMatch.delete(x.uid)); return; }
         this.userMatch.set(e.uid, 'pending');
-        players.push({ uid: u.id, name: u.username, level: GD.levelInfo(u.xp).level, rating: u.rating || 1000, unlocked: u.unlocked.slice(), skin: u.skin, banner: u.banner });
+        const pub = prog.publicProfile(u);
+        players.push({ uid: u.id, name: u.username, level: GD.levelInfo(u.xp).level, rating: u.rating || 1000, unlocked: u.unlocked.slice(), skin: u.skin, banner: u.banner, cheats: pub.powers });
       }
     }
     const uids = players.map((p) => p.uid || null);
     const match = new Match({
       players,
       mode,
-      onSnapshot: (idx, snap) => { const s = this.sockets.get(uids[idx]); if (s) s.volatile.emit('snap', snap); },
+      onSnapshot: (idx, snap) => {
+        const s = this.sockets.get(uids[idx]);
+        if (s) s.volatile.emit('snap', snap);
+        const entry = this.matches.get(match.id);
+        if (entry && entry.spectators) {
+          for (const [suid, sidx] of entry.spectators) {
+            if (sidx !== idx) continue;
+            const ss = this.sockets.get(suid);
+            if (ss) ss.volatile.emit('snap', snap);
+          }
+        }
+      },
       onEnd: (result) => this.finish(match, uids, result).catch((e) => console.error('finish failed', e)),
     });
-    this.matches.set(match.id, { match, uids });
+    this.matches.set(match.id, { match, uids, spectators: new Map() });
     uids.forEach((uid, idx) => {
       if (!uid) return;
+      this.stopSpectate(uid);
       this.userMatch.set(uid, match.id);
       match.setConnected(idx, this.sockets.has(uid));
       const s = this.sockets.get(uid);
@@ -245,14 +298,24 @@ class Lobby {
   startInfo(match, idx) {
     return {
       matchId: match.id, you: idx, mode: match.mode, map: match.mapId,
-      players: match.players.map((p) => ({ name: p.name, level: p.level, rating: p.rating, skin: p.skin, banner: p.banner, isBot: !!p.isBot, unlocked: p.unlocked })),
+      players: match.players.map((p, i) => ({ name: p.name, level: p.level, rating: p.rating, skin: p.skin, banner: p.banner, isBot: !!p.isBot, unlocked: p.unlocked, cheats: i === idx && !!p.cheats })),
     };
   }
 
   async finish(match, uids, result) {
+    const ended = this.matches.get(match.id);
+    if (ended && ended.spectators) {
+      for (const suid of ended.spectators.keys()) {
+        this.spectating.delete(suid);
+        this.emitTo([suid], 'spectateEnd', {
+          winner: result.winner >= 0 ? match.players[result.winner].name : null, reason: result.reason, round: result.round,
+        });
+      }
+    }
     this.matches.delete(match.id);
     uids.forEach((uid) => uid && this.userMatch.delete(uid));
-    const early = (result.reason === 'forfeit' || result.reason === 'disconnect') && result.round < GD.RULES.earlyEndRound;
+    // Matches ended by an early forfeit, or where admin powers were used, don't count toward records
+    const early = ((result.reason === 'forfeit' || result.reason === 'disconnect') && result.round < GD.RULES.earlyEndRound) || !!match.cheated;
     const users = await Promise.all(uids.map((uid) => (uid ? this.store.getById(uid) : null)));
     // Elo rating for real PvP results
     const ratingDelta = [0, 0];
@@ -278,7 +341,7 @@ class Lobby {
       const s = this.sockets.get(uid);
       if (s) {
         s.emit('matchEnd', {
-          won, draw, reason: result.reason, round: result.round, early, rewards, mode: match.mode,
+          won, draw, reason: result.reason, round: result.round, early, cheated: !!match.cheated, rewards, mode: match.mode,
           stats: match.boards.map((b) => Object.assign({ lives: Math.max(0, b.lives) }, b.stats)),
           profile: prog.publicProfile(u),
         });

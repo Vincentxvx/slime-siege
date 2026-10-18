@@ -205,7 +205,7 @@
       <div class="howto-cols">
         <section><h4>Hold your lane</h4><p>You and your opponent each defend your own path. Every slime that reaches the end costs lives, and bigger slimes cost more. Hit zero lives and you lose.</p></section>
         <section><h4>Build and upgrade</h4><p>Pick a tower with keys <kbd>1</kbd>–<kbd>6</kbd> and click a grass tile. Click a placed tower to upgrade it (<kbd>U</kbd>), change who it targets, or sell it (<kbd>Del</kbd>).</p></section>
-        <section><h4>Send slimes</h4><p>Sends drop extra slimes into your opponent's lane and permanently raise your income, paid every 6 seconds. Keys <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>. Spend too much on sends and your own defense cracks.</p></section>
+        <section><h4>Send slimes</h4><p>Sends drop extra slimes into your opponent's lane and permanently raise your income, paid every 6 seconds. Keys <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>. Quick sends: <kbd>R</kbd> strongest, <kbd>F</kbd> best income, <kbd>V</kbd> all you can afford. Spend too much on sends and your own defense cracks.</p></section>
         <section><h4>Level up</h4><p>Matches earn XP and coins, even losses. Spend coins on new towers, skins and banners. Your first win each day pays ${GD.DAILY_WIN_BONUS} bonus coins.</p></section>
       </div>
       <h4 class="gallery-title">Know your slimes</h4>`;
@@ -319,7 +319,7 @@
     const rows = () => {
       const q = $('admin-search').value.trim().toLowerCase();
       $('admin-rows').innerHTML = S.adminUsers.filter((u) => u.username.toLowerCase().includes(q)).map((u) =>
-        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
+        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.cheatAccess && !u.admin ? ' <em class="tag pow">powers</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
         `<td>${u.level}</td><td>${u.coins}</td><td>${u.rating}</td><td>${u.wins}–${u.losses}</td></tr>`).join('') ||
         '<tr><td colspan="5" class="muted">No players match.</td></tr>';
     };
@@ -364,6 +364,7 @@
         <fieldset><legend>Towers</legend>${checks('unlocked', GD.TOWER_ORDER, u.unlocked, (id) => GD.TOWERS[id].name, GD.DEFAULT_TOWERS)}</fieldset>
         <fieldset><legend>Cosmetics</legend>${checks('owned', Object.keys(GD.SKINS).concat(Object.keys(GD.BANNERS)), u.owned,
           (id) => (GD.SKINS[id] ? 'Skin: ' + GD.SKINS[id].name : 'Banner: ' + GD.BANNERS[id].name), GD.DEFAULT_COSMETICS)}</fieldset>
+        <label class="chk"><input type="checkbox" name="cheatAccess" ${u.cheatAccess || u.admin ? 'checked' : ''} ${u.admin ? 'disabled' : ''}>In-game powers (gold, lives, slimes)</label>
         <label class="chk"><input type="checkbox" name="ideasAccess" ${u.ideasAccess || u.admin ? 'checked' : ''} ${u.admin ? 'disabled' : ''}>Can see the Ideas box</label>
         <label class="chk ban"><input type="checkbox" name="banned" ${u.banned ? 'checked' : ''} ${isMe ? 'disabled' : ''}>Banned (can't log in)</label>
         <button class="btn primary" type="submit">Save changes</button>
@@ -385,7 +386,7 @@
       body.unlocked = [...f.querySelectorAll('input[name=unlocked]:checked')].map((c) => c.value);
       body.owned = [...f.querySelectorAll('input[name=owned]:checked')].map((c) => c.value);
       body.banned = f.banned.checked;
-      if (!u.admin) body.ideasAccess = f.ideasAccess.checked;
+      if (!u.admin) { body.ideasAccess = f.ideasAccess.checked; body.cheatAccess = f.cheatAccess.checked; }
       try {
         const r = await api('/api/admin/user/' + u.id, body);
         Object.assign(u, r.user);
@@ -486,7 +487,7 @@
         <span class="dot" aria-hidden="true"></span>
         <span class="fname">${esc(f.username)}</span>
         <small>${STATUS_LABEL[f.status]}</small>
-        ${f.status === 'online' ? '<button class="btn primary small-btn" data-f="invite">Invite</button>' : ''}
+        ${f.status === 'online' ? '<button class="btn primary small-btn" data-f="invite">Invite</button>' : f.status === 'playing' ? '<button class="btn small-btn" data-f="watch">Watch</button>' : ''}
         <button class="fx" data-f="remove" title="Remove friend" aria-label="Remove ${esc(f.username)}">×</button>
       </li>`).concat(d.outgoing.map((o) => `
       <li data-id="${o.id}" class="st-pending"><span class="dot" aria-hidden="true"></span><span class="fname">${esc(o.username)}</span><small>Request sent</small>
@@ -511,6 +512,7 @@
     if (!b || !row) return;
     const id = row.dataset.id, f = b.dataset.f;
     if (f === 'invite') { if (S.socket) S.socket.emit('invite', id); return; }
+    if (f === 'watch') { if (S.socket) S.socket.emit('spectate', id); return; }
     if (f === 'remove' && !b.classList.contains('armed')) {
       b.classList.add('armed'); b.textContent = 'Remove?';
       setTimeout(() => { b.classList.remove('armed'); b.textContent = '×'; }, 3000);
@@ -573,6 +575,18 @@
       else { el.textContent = 'Rematch expired.'; btn.disabled = true; }
     });
     socket.on('snap', (s) => window.Game.snap(s));
+    const backToLobby = () => { window.Game.stop(); renderProfile(); renderShop(); show('lobby'); loadFriends(); };
+    socket.on('spectateStart', (info) => {
+      hideInvite();
+      show('game');
+      window.Game.start(info, {
+        action: () => Promise.resolve({ ok: false, error: "You're spectating" }),
+        forfeit: () => {}, emote: () => {},
+        stopWatching: () => { socket.emit('stopSpectate'); backToLobby(); },
+      });
+    });
+    socket.on('spectateEnd', (r) => window.Game.spectateEnd(r, backToLobby));
+    socket.on('spectators', (d) => window.Game.setSpectators(d.count));
     socket.on('matchEnd', (res) => {
       S.profile = res.profile;
       const mode = window.Game.mode();

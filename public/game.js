@@ -19,6 +19,10 @@
       placing: null, hover: null, selected: null, panelKey: '', lastRound: -1, ended: false, previewRound: -1,
     });
     G.map = GD.MAPS[info.map];
+    G.spectator = !!info.spectator;
+    document.body.classList.toggle('spectating', G.spectator);
+    $('btn-stopwatch').hidden = !G.spectator;
+    $('spectator-count').textContent = '';
     G.me = info.players[info.you];
     G.op = info.players[1 - info.you];
     plate($('hud-me-plate'), G.me);
@@ -31,10 +35,35 @@
     buildSends();
     renderPanel(true);
     buildEmotes();
+    buildPowers();
     $('bubble-me').hidden = true; $('bubble-op').hidden = true;
     sizeCanvases();
     window.Sfx.play('start');
     requestAnimationFrame(frame);
+  }
+
+  function buildPowers() {
+    const btn = $('btn-powers'), panel = $('power-panel');
+    btn.hidden = !G.me.cheats;
+    panel.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    if (!G.me.cheats || panel.dataset.built) return;
+    panel.dataset.built = '1';
+    const sel = panel.querySelector('select[name=enemy]');
+    sel.innerHTML = GD.ENEMY_ORDER.map((k) => `<option value="${k}">${GD.ENEMIES[k].name}</option>`).join('');
+    btn.addEventListener('click', () => { panel.hidden = !panel.hidden; btn.setAttribute('aria-expanded', String(!panel.hidden)); $('emote-row').hidden = true; });
+    panel.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-p]');
+      if (!b) return;
+      const a = { type: 'power', power: b.dataset.p, amount: Number(b.dataset.v || 0) };
+      if (a.power === 'maxTower') { if (!G.selected) return toast('Click one of your towers first', 'bad'); a.id = G.selected; }
+      act(a);
+    });
+    $('pp-spawn').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = e.target;
+      act({ type: 'power', power: 'spawn', enemy: f.enemy.value, count: Number(f.count.value), target: f.target.value });
+    });
   }
 
   function buildEmotes() {
@@ -124,12 +153,42 @@
   }
 
   const SEND_KEYS = ['q', 'w', 'e', 'a', 's', 'd', 'z', 'x', 'c'];
+  const BULK_KEYS = { r: 'strong', f: 'eco', v: 'all' };
+
+  // Packs that can be sent right now: unlocked, off cooldown, affordable with the given gold
+  function sendable(gold) {
+    const s = G.cur, me = s && s.boards[G.you];
+    if (!me) return [];
+    return GD.SENDS.map((p, i) => ({ p, i })).filter(({ p, i }) => s.round >= p.round && (!me.cds || me.cds[i] <= 0) && p.cost <= gold);
+  }
+  function bulkSend(kind) {
+    if (G.spectator || !G.cur) return;
+    let gold = G.cur.boards[G.you].gold;
+    const list = sendable(gold);
+    if (!list.length) return toast('Nothing you can send right now', 'bad');
+    if (kind === 'strong') return act({ type: 'send', pack: list.reduce((a, b) => (b.p.cost > a.p.cost ? b : a)).p.id });
+    if (kind === 'eco') {
+      const withEco = list.filter((x) => x.p.eco > 0);
+      if (!withEco.length) return toast('No income send available', 'bad');
+      return act({ type: 'send', pack: withEco.reduce((a, b) => (b.p.eco / b.p.cost > a.p.eco / a.p.cost ? b : a)).p.id });
+    }
+    // all: strongest first while gold lasts
+    let n = 0;
+    for (const { p } of list.sort((a, b) => b.p.cost - a.p.cost)) {
+      if (p.cost > gold) continue;
+      gold -= p.cost; n++;
+      act({ type: 'send', pack: p.id });
+    }
+    if (n > 1) toast(`Sent ${n} packs`, 'good');
+  }
 
   // ---------- networking ----------
   function act(a) {
+    if (G.spectator) return;
     G.net.action(a).then((res) => {
       if (!res.ok) { toast(res.error, 'bad'); window.Sfx.play('error'); return; }
-      window.Sfx.play(a.type === 'target' ? 'emote' : a.type);
+      window.Sfx.play(a.type === 'target' || a.type === 'power' ? 'emote' : a.type);
+      if (a.type === 'power' && a.power === 'maxTower') renderPanel(true);
       if (a.type === 'place' && res.id) {
         if (!G.shift) { G.selected = res.id; setPlacing(null); }
       } else if (a.type === 'sell') { G.selected = null; renderPanel(true); }
@@ -193,6 +252,9 @@
         case 'm':
           if (bi === G.you) window.Sfx.play('coin');
           G.effects.push({ b: bi, k: 'txt', x1: tx, y1: ty - 10, text: '+' + ev[2], color: '#ffd35c', t0: t, dur: 1.1 });
+          break;
+        case 'x':
+          if (bi === G.you) toast('Your opponent used admin powers, so this match won\'t count', 'warn');
           break;
         case 'i':
           if (bi === G.you) {
@@ -314,6 +376,8 @@
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
         panel.querySelector('[data-act=sell]').onclick = () => act({ type: 'sell', id: tw[0] });
+      } else if (G.spectator) {
+        panel.innerHTML = `<h3>Watching ${esc(G.info.watching)}</h3><p class="muted">You're seeing ${esc(G.info.watching)}'s lane. Their opponent's lane is in the small view above. Click a tower to see its stats.</p>`;
       } else {
         panel.innerHTML = `<h3>Defend your lane</h3><p class="muted">Pick a tower (keys 1–${G.me.unlocked.length}) and click a free tile.
           Click a placed tower to upgrade or sell it. Sending slimes pressures your opponent and raises your income.</p>`;
@@ -383,6 +447,8 @@
       if (e.key === 'Escape') { setPlacing(null); G.selected = null; renderPanel(true); return; }
       const card = document.querySelector(`#tower-bar [data-key="${e.key}"]`);
       if (card) { setPlacing(G.placing === card.dataset.type ? null : card.dataset.type); return; }
+      const bk = BULK_KEYS[e.key.toLowerCase()];
+      if (bk && !e.ctrlKey && !e.metaKey) { bulkSend(bk); return; }
       const si = SEND_KEYS.indexOf(e.key.toLowerCase());
       if (si >= 0 && !e.ctrlKey && !e.metaKey) {
         const btn = document.querySelector(`#send-grid .send[data-i="${si}"]`);
@@ -392,6 +458,11 @@
       if (G.selected && (e.key === 'u' || e.key === 'U')) act({ type: 'upgrade', id: G.selected });
       if (G.selected && (e.key === 'Delete' || e.key === 'Backspace')) act({ type: 'sell', id: G.selected });
     });
+    document.querySelector('.send-bulk').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bulk]');
+      if (b) bulkSend(b.dataset.bulk);
+    });
+    $('btn-stopwatch').addEventListener('click', () => { if (G.spectator && G.net.stopWatching) G.net.stopWatching(); });
     $('btn-chat').addEventListener('click', () => {
       const row = $('emote-row');
       row.hidden = !row.hidden;
@@ -548,6 +619,7 @@
   function end(res, onExit) {
     G.ended = true;
     window.Sfx.play(res.won ? 'win' : 'lose');
+    $('end-again').hidden = false;
     const o = $('end-overlay');
     o.hidden = false;
     $('end-title').textContent = res.draw ? 'Draw' : res.won ? 'Victory' : 'Defeat';
@@ -561,12 +633,33 @@
       (r.rating ? `<p class="rating-change ${r.rating > 0 ? 'up' : 'down'}">Rating ${r.rating > 0 ? '+' : ''}${r.rating} (now ${res.profile.rating})</p>` : '') +
       (r.levelUps ? `<p class="lvlup">Level up! You're now level ${r.level}.</p>` : '') +
       (r.daily ? `<p class="lvlup">First win of the day: +${r.daily} bonus coins included.</p>` : '') +
-      (res.early ? '<p class="muted">Match ended before round 5, so it counts for less and not toward your record.</p>' : '');
+      (res.cheated ? '<p class="muted">Admin powers were used, so this match doesn\'t count toward rating or wins.</p>'
+        : res.early ? '<p class="muted">Match ended before round 5, so it counts for less and not toward your record.</p>' : '');
     $('end-back').onclick = () => { stop(); onExit(); };
   }
 
-  function stop() { G.active = false; }
+  function stop() { G.active = false; document.body.classList.remove('spectating'); }
+
+  function spectateEnd(r, onExit) {
+    if (!G.active) return;
+    G.ended = true;
+    const o = $('end-overlay');
+    o.hidden = false;
+    o.className = 'end draw';
+    $('end-title').textContent = r.winner ? `${r.winner} won` : 'Draw';
+    $('end-reason').textContent = `${(REASONS[r.reason] ? '' : '')}The match ended in round ${r.round}.`;
+    $('end-rewards').innerHTML = '';
+    $('end-rematch').hidden = true;
+    $('end-again').hidden = true;
+    $('end-back').onclick = () => { $('end-again').hidden = false; stop(); onExit(); };
+  }
+
+  function setSpectators(n) {
+    $('spectator-count').textContent = n > 0 ? `${n} watching` : '';
+  }
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   bindInput();
-  window.Game = { start, snap, end, stop, toast, emote, isActive: () => G.active, mode: () => G.info && G.info.mode };
+  window.Game = { start, snap, end, stop, toast, emote, spectateEnd, setSpectators, isActive: () => G.active, mode: () => G.info && G.info.mode };
 })();
