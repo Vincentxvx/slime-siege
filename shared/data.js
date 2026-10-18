@@ -12,6 +12,8 @@
     tickRate: 20,          // simulation ticks per second
     snapEvery: 2,          // send a snapshot every N ticks (10/s)
     countdown: 3,          // seconds before the match clock starts
+    pickTime: 20,          // seconds to choose your towers at the start of a match
+    loadoutSize: 4,        // towers you can bring into a match
     startLives: 100,
     startGold: 650,
     startIncome: 75,       // gold paid every incomeInterval

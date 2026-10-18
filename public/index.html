@@ -153,6 +153,21 @@
       </aside>
     </div>
 
+    <div id="pick-overlay" class="pick-overlay" hidden>
+      <div class="panel pick-card">
+        <div class="pick-head">
+          <div><h2>Choose your towers</h2><p class="muted" id="pick-sub">Pick 4. You can only build these in this match.</p></div>
+          <div class="pick-timer" id="pick-timer" aria-live="polite">20</div>
+        </div>
+        <div class="pick-grid" id="pick-grid"></div>
+        <div class="pick-foot">
+          <span id="pick-count">0 / 4 chosen</span>
+          <span id="pick-opp" class="muted">Opponent is choosing…</span>
+          <button class="btn primary" id="pick-ready">Lock in</button>
+        </div>
+      </div>
+    </div>
+
     <div id="end-overlay" class="end" hidden>
       <div class="panel end-card">
         <h2 id="end-title">Victory</h2>

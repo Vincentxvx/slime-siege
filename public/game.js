@@ -19,6 +19,8 @@
       placing: null, hover: null, selected: null, panelKey: '', lastRound: -1, ended: false, previewRound: -1,
     });
     G.map = GD.MAPS[info.map];
+    G.picking = false; G.pickSel = null; G.pickSent = '';
+    $('pick-overlay').hidden = true;
     G.spectator = !!info.spectator;
     document.body.classList.toggle('spectating', G.spectator);
     $('btn-stopwatch').hidden = !G.spectator;
@@ -106,13 +108,92 @@
   }
   window.addEventListener('resize', () => G.active && sizeCanvases());
 
+  // ---------- tower selection at the start of a match ----------
+  function renderPick(s) {
+    const o = $('pick-overlay');
+    const size = GD.RULES.loadoutSize;
+    if (!G.picking) {
+      G.picking = true;
+      o.hidden = false;
+      $('countdown').hidden = true;
+      if (G.spectator) {
+        $('pick-grid').innerHTML = '';
+        $('pick-sub').textContent = 'The players are choosing their towers.';
+        $('pick-ready').hidden = true;
+        $('pick-count').textContent = '';
+      } else {
+        G.pickSel = (s.pick && s.pick.mine.length ? s.pick.mine : []).slice();
+        const choices = s.pick ? s.pick.choices : G.me.unlocked;
+        const need = Math.min(size, choices.length);
+        $('pick-sub').textContent = `Pick ${need}. You can only build these in this match.`;
+        $('pick-ready').hidden = false;
+        const grid = $('pick-grid');
+        grid.innerHTML = '';
+        GD.TOWER_ORDER.filter((t) => choices.includes(t)).forEach((type) => {
+          const T0 = GD.TOWERS[type], st = GD.towerStats(type, 0);
+          const b = document.createElement('button');
+          b.className = 'pick-tower';
+          b.dataset.type = type;
+          b.append(R.towerIcon(type, G.me.skin, 46));
+          const tags = [st.detect ? 'Sees ghosts' : '', st.pierceArmor ? 'Ignores armor' : ''].filter(Boolean).join(', ');
+          b.insertAdjacentHTML('beforeend', `<b>${T0.name}</b><span class="gold">${T0.cost}</span><small>${T0.desc}</small>${tags ? `<em>${tags}</em>` : ''}`);
+          b.onclick = () => togglePick(type);
+          grid.append(b);
+        });
+      }
+    }
+    const left = Math.ceil(s.pickLeft || 0);
+    $('pick-timer').textContent = left;
+    $('pick-timer').classList.toggle('urgent', left <= 5);
+    if (!G.spectator && s.pick) {
+      if (s.pick.ready) G.pickSel = s.pick.mine.slice();
+      const need = Math.min(size, s.pick.choices.length);
+      document.querySelectorAll('#pick-grid .pick-tower').forEach((b) => {
+        const on = G.pickSel.includes(b.dataset.type);
+        b.classList.toggle('on', on);
+        b.disabled = s.pick.ready;
+        b.dataset.slot = on ? G.pickSel.indexOf(b.dataset.type) + 1 : '';
+      });
+      $('pick-count').textContent = s.pick.ready ? 'Locked in' : `${G.pickSel.length} / ${need} chosen`;
+      $('pick-ready').disabled = s.pick.ready || G.pickSel.length < need;
+      $('pick-ready').textContent = s.pick.ready ? 'Waiting for opponent…' : 'Lock in';
+      $('pick-opp').textContent = s.pick.oppReady ? 'Opponent is ready' : 'Opponent is choosing…';
+      $('pick-opp').classList.toggle('ready', !!s.pick.oppReady);
+    }
+  }
+
+  function togglePick(type) {
+    const size = GD.RULES.loadoutSize;
+    const i = G.pickSel.indexOf(type);
+    if (i >= 0) G.pickSel.splice(i, 1);
+    else if (G.pickSel.length >= size) { toast(`You can only bring ${size} towers`, 'bad'); return; }
+    else G.pickSel.push(type);
+    window.Sfx.play('emote');
+    G.net.action({ type: 'loadout', towers: G.pickSel }).then((r) => { if (!r.ok) toast(r.error, 'bad'); });
+    if (G.cur) renderPick(G.cur);
+  }
+
+  function endPick(s) {
+    G.picking = false;
+    $('pick-overlay').hidden = true;
+    if (s.loadouts) {
+      if (!G.spectator) G.me.unlocked = s.loadouts[G.you].slice();
+      const opp = s.loadouts[1 - G.you] || [];
+      if (opp.length) toast(`${G.op.name} brought: ${opp.map((t) => GD.TOWERS[t].name).join(', ')}`, 'warn');
+    }
+    buildTowerBar();
+    renderPanel(true);
+    window.Sfx.play('start');
+  }
+
   function buildTowerBar() {
     const bar = $('tower-bar');
     bar.innerHTML = '';
     let key = 1;
-    GD.TOWER_ORDER.forEach((type) => {
+    // Only the towers brought into this match (your loadout), in the order you picked them
+    G.me.unlocked.filter((t) => GD.TOWERS[t]).forEach((type) => {
       const T0 = GD.TOWERS[type];
-      const unlocked = G.me.unlocked.includes(type);
+      const unlocked = true;
       const b = document.createElement('button');
       b.className = 'tcard' + (unlocked ? '' : ' locked');
       b.dataset.type = type;
@@ -197,6 +278,8 @@
 
   function snap(s) {
     if (!G.active) return;
+    if (s.state === 'picking') { renderPick(s); G.cur = s; G.curAt = now(); updateHud(); return; }
+    if (G.picking) endPick(s);
     const t = now();
     if (G.cur && s.boards[G.you].lives < G.cur.boards[G.you].lives) {
       window.Sfx.play('leak');
@@ -291,6 +374,7 @@
     $('hud-round').textContent = Math.max(1, s.round);
     $('hud-lives').parentElement.classList.toggle('low', me.lives <= 25);
     const cd = $('countdown');
+    if (s.state === 'picking') { cd.hidden = true; $('hud-next').textContent = 'Choosing towers'; return; }
     if (s.t < 0) { cd.hidden = false; cd.textContent = Math.ceil(-s.t); cd.className = 'overlay big'; }
     else if (s.round === 0) { cd.hidden = false; cd.textContent = `Build your defense — round 1 in ${Math.ceil(s.nextRound)}s`; cd.className = 'overlay hint'; }
     else cd.hidden = true;
@@ -445,6 +529,14 @@
     });
     window.addEventListener('keydown', (e) => {
       if (!G.active || e.target.tagName === 'INPUT') return;
+      if (G.picking) {
+        if (G.spectator) return;
+        const n = Number(e.key);
+        const cards = [...document.querySelectorAll('#pick-grid .pick-tower')];
+        if (n >= 1 && n <= cards.length) togglePick(cards[n - 1].dataset.type);
+        if (e.key === 'Enter' && !$('pick-ready').disabled) $('pick-ready').click();
+        return;
+      }
       if (e.key === 'Escape') { setPlacing(null); G.selected = null; renderPanel(true); return; }
       // Keyboard play: arrows move a cursor, Enter builds or selects, T changes targeting
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
@@ -495,6 +587,9 @@
     document.querySelector('.send-bulk').addEventListener('click', (e) => {
       const b = e.target.closest('[data-bulk]');
       if (b) bulkSend(b.dataset.bulk);
+    });
+    $('pick-ready').addEventListener('click', () => {
+      G.net.action({ type: 'loadout', towers: G.pickSel, ready: true }).then((r) => { if (!r.ok) toast(r.error, 'bad'); else window.Sfx.play('upgrade'); });
     });
     $('btn-stopwatch').addEventListener('click', () => { if (G.spectator && G.net.stopWatching) G.net.stopWatching(); });
     $('btn-chat').addEventListener('click', () => {

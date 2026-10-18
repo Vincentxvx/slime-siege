@@ -454,3 +454,30 @@ input {
 .tower-panel .next-up small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tower-panel .next-up { height: 62px; min-height: 0; overflow: hidden; }
 .tower-panel .next-up b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- tower selection ---------- */
+.pick-overlay { position: fixed; inset: 0; z-index: 15; background: rgba(14, 9, 24, .82); display: grid; place-items: center; padding: 16px; }
+.pick-card { width: min(860px, 100%); display: grid; gap: 14px; }
+.pick-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.pick-head h2 { font-family: var(--display); font-weight: 400; font-size: 32px; line-height: 1; }
+.pick-head p { margin: 6px 0 0; }
+.pick-timer { font-family: var(--display); font-size: 48px; min-width: 2.2ch; text-align: center; color: var(--lime); text-shadow: 0 3px 0 var(--line); }
+.pick-timer.urgent { color: var(--red); animation: pulse .6s ease-in-out infinite; }
+.pick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pick-tower { position: relative; display: grid; grid-template-columns: 46px 1fr auto; grid-template-rows: auto auto auto; column-gap: 10px; align-items: center; text-align: left;
+  background: var(--ink); border: 3px solid var(--line); border-radius: 14px; padding: 10px; cursor: pointer; }
+.pick-tower canvas { grid-row: 1 / 4; }
+.pick-tower b { font-size: 15px; }
+.pick-tower .gold { justify-self: end; font-weight: 700; font-size: 13px; }
+.pick-tower small { grid-column: 2 / 4; color: var(--muted); font-size: 12px; line-height: 1.3; }
+.pick-tower em { grid-column: 2 / 4; font-style: normal; font-size: 11px; color: var(--lime); }
+.pick-tower:hover:not(:disabled) { background: var(--ink-3); }
+.pick-tower.on { border-color: var(--lime); background: #2a3a26; box-shadow: 0 0 0 2px var(--lime-d) inset; }
+.pick-tower.on::after { content: attr(data-slot); position: absolute; top: -9px; right: -9px; width: 24px; height: 24px; border-radius: 50%; background: var(--lime); color: #17260a; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--line); }
+.pick-tower:disabled { cursor: default; }
+.pick-tower:disabled:not(.on) { opacity: .4; }
+.pick-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.pick-foot #pick-count { font-weight: 700; }
+.pick-foot #pick-opp { flex: 1; }
+.pick-foot #pick-opp.ready { color: var(--lime); }
+@media (max-width: 760px) { .pick-grid { grid-template-columns: 1fr 1fr; } }

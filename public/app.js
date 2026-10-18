@@ -206,6 +206,7 @@
     wrap.innerHTML = `
       <div class="howto-cols">
         <section><h4>Hold your lane</h4><p>You and your opponent each defend your own path. Every slime that reaches the end costs lives, and bigger slimes cost more. Hit zero lives and you lose.</p></section>
+        <section><h4>Pick your 4 towers</h4><p>Every match starts with ${GD.RULES.pickTime} seconds to choose ${GD.RULES.loadoutSize} of your unlocked towers. You can only build those 4, so pick a mix that handles armored Knights and invisible Ghosts. Your opponent sees your choice when the match starts.</p></section>
         <section><h4>Build and upgrade</h4><p>Pick a tower with keys <kbd>1</kbd>–<kbd>6</kbd> and click a grass tile. Click a placed tower to upgrade it (<kbd>U</kbd>), change who it targets (<kbd>T</kbd>), or sell it (<kbd>Del</kbd>). You can also play with the keyboard only: arrow keys move a cursor and <kbd>Enter</kbd> builds or selects.</p></section>
         <section><h4>Send slimes</h4><p>Sends drop extra slimes into your opponent's lane and permanently raise your income, paid every 6 seconds. Keys <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>. Quick sends: <kbd>R</kbd> strongest, <kbd>F</kbd> best income, <kbd>V</kbd> all you can afford. Spend too much on sends and your own defense cracks.</p></section>
         <section><h4>Level up</h4><p>Matches earn XP and coins, even losses. Spend coins on new towers, skins and banners. Your first win each day pays ${GD.DAILY_WIN_BONUS} bonus coins.</p></section>

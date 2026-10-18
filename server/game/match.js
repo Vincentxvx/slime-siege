@@ -27,7 +27,16 @@ class Match {
     this.onEnd = onEnd || (() => {});
     this.time = -R.countdown;
     this.ticks = 0;
-    this.state = 'countdown';
+    this.state = 'picking';
+    this.pickLeft = R.pickTime;
+    // Tower selection: each player brings up to loadoutSize of their unlocked towers
+    for (const p of players) {
+      p.allTowers = p.unlocked.slice();
+      p.loadout = [];
+      p.ready = false;
+      if (p.isBot) { p.loadout = botLoadout(p.difficulty).filter((t) => p.allTowers.includes(t)); p.ready = true; }
+      else if (p.allTowers.length <= R.loadoutSize) { p.loadout = p.allTowers.slice(); p.ready = true; }
+    }
     this.round = 0;
     this.nextRoundAt = R.prepTime;
     this.nextIncomeAt = R.incomeInterval;
@@ -47,8 +56,17 @@ class Match {
   // ---------------- main loop ----------------
   tick() {
     if (this.state === 'ended') return;
-    this.time += DT;
     this.ticks++;
+    if (this.state === 'picking') {
+      this.pickLeft -= DT;
+      if (this.pickLeft <= 0 || this.players.every((p) => p.ready)) this.finishPicking();
+      else {
+        this.checkDisconnects();
+        if (this.ticks % R.snapEvery === 0) this.emitSnapshots();
+        return;
+      }
+    }
+    this.time += DT;
     if (this.time >= 0) {
       if (this.state === 'countdown') this.state = 'running';
       if (this.time >= this.nextRoundAt) {
@@ -68,6 +86,30 @@ class Match {
       this.checkDisconnects();
     }
     if (this.ticks % R.snapEvery === 0 || this.state === 'ended') this.emitSnapshots();
+  }
+
+  finishPicking() {
+    for (const p of this.players) {
+      // fill empty slots with the player's other towers
+      for (const t of p.allTowers) if (p.loadout.length < R.loadoutSize && !p.loadout.includes(t)) p.loadout.push(t);
+      p.unlocked = p.loadout.slice();
+      p.ready = true;
+    }
+    this.state = 'countdown';
+    this.time = -R.countdown;
+  }
+
+  setLoadout(idx, a) {
+    const p = this.players[idx];
+    if (p.ready) return { ok: false, error: 'Your towers are locked in' };
+    const list = Array.isArray(a.towers) ? [...new Set(a.towers.map(String))] : [];
+    if (list.length > R.loadoutSize) return { ok: false, error: `Pick at most ${R.loadoutSize} towers` };
+    if (list.some((t) => !p.allTowers.includes(t))) return { ok: false, error: "You haven't unlocked that tower" };
+    const need = Math.min(R.loadoutSize, p.allTowers.length);
+    if (a.ready && list.length < need) return { ok: false, error: `Pick ${need} towers first` };
+    p.loadout = list;
+    if (a.ready) p.ready = true;
+    return { ok: true };
   }
 
   spawnRound(r) {
@@ -236,6 +278,11 @@ class Match {
   // ---------------- player actions ----------------
   handleAction(idx, a) {
     if (this.state === 'ended' || !a || typeof a !== 'object') return { ok: false, error: 'Match is over' };
+    if (this.state === 'picking') {
+      if (a.type === 'loadout') return this.setLoadout(idx, a);
+      return { ok: false, error: 'Choose your towers first' };
+    }
+    if (a.type === 'loadout') return { ok: false, error: 'Towers are already chosen' };
     const b = this.boards[idx];
     switch (a.type) {
       case 'place': return this.place(idx, b, String(a.tower), a.col | 0, a.row | 0);
@@ -342,6 +389,7 @@ class Match {
         break;
       }
       case 'round':
+        if (this.state === 'picking') return { ok: false, error: 'Wait until towers are chosen' };
         if (this.time < 0) this.time = 0;
         this.nextRoundAt = this.time;
         break;
@@ -423,13 +471,27 @@ class Match {
       nextRound: r2(this.nextRoundAt - Math.max(0, this.time)),
       nextIncome: r2(this.nextIncomeAt - Math.max(0, this.time)),
     };
+    if (this.state === 'picking') base.pickLeft = r2(Math.max(0, this.pickLeft));
+    else base.loadouts = this.players.map((p) => p.loadout);
     for (let i = 0; i < 2; i++) {
       if (this.players[i].isBot) continue;
       const own = boards[i], other = Object.assign({}, boards[1 - i], { gold: null, cds: null });
       const snapBoards = i === 0 ? [own, other] : [other, own];
-      this.onSnapshot(i, Object.assign({ boards: snapBoards }, base));
+      const extra = { boards: snapBoards };
+      if (this.state === 'picking') {
+        const me = this.players[i], op = this.players[1 - i];
+        extra.pick = { mine: me.loadout, ready: me.ready, oppReady: op.ready, choices: me.allTowers };
+      }
+      this.onSnapshot(i, Object.assign(extra, base));
     }
   }
+}
+
+// Towers bots bring (they need an armor answer and a ghost answer)
+function botLoadout(difficulty) {
+  if (difficulty === 'hard') return ['cannon', 'sniper', 'tesla', 'mine'];
+  if (difficulty === 'easy') return ['archer', 'cannon', 'frost', 'sniper'];
+  return ['archer', 'cannon', 'sniper', 'mine'];
 }
 
 function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
