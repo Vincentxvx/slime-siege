@@ -35,6 +35,7 @@ function publicProfile(u) {
     isAdmin: isAdminName(u.username),
     ideas: isAdminName(u.username) || !!u.ideasAccess,
     powers: isAdminName(u.username) || !!u.cheatAccess,
+    mapEditor: isAdminName(u.username) || !!u.mapAccess,
   };
 }
 

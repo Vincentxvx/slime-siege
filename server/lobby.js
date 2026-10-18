@@ -3,6 +3,7 @@ const GD = require('../shared/data');
 const { Match } = require('./game/match');
 const prog = require('./progression');
 const friends = require('./friends');
+const maps = require('./maps');
 
 const BOT_NAMES = { easy: 'Gloop (Easy Bot)', normal: 'Ooze (Normal Bot)', hard: 'Jellyking (Hard Bot)' };
 const BOT_LOOKS = { easy: ['skin_glacier', 'banner_forest'], normal: ['skin_crimson', 'banner_ember'], hard: ['skin_shadow', 'banner_void'] };
@@ -16,6 +17,7 @@ class Lobby {
     this.sockets = new Map();   // uid -> socket
     this.queue = [];            // uids waiting for quick match
     this.rooms = new Map();     // code -> host uid
+    this.roomMap = new Map();   // code -> chosen map id (undefined = random)
     this.hostRoom = new Map();  // uid -> code
     this.matches = new Map();   // matchId -> { match, uids }
     this.userMatch = new Map(); // uid -> matchId
@@ -60,9 +62,9 @@ class Lobby {
 
     socket.on('queue', () => this.joinQueue(uid));
     socket.on('leaveQueue', () => { this.clearPending(uid); this.emitStatus(uid); });
-    socket.on('createRoom', () => this.createRoom(uid));
+    socket.on('createRoom', (mapId) => this.createRoom(uid, mapId));
     socket.on('joinRoom', (code) => this.joinRoom(uid, code));
-    socket.on('playBot', (diff) => this.playBot(uid, diff));
+    socket.on('playBot', (diff, mapId) => this.playBot(uid, diff, mapId));
     socket.on('action', (a, ack) => {
       if (limited()) { if (typeof ack === 'function') ack({ ok: false, error: 'Slow down' }); return; }
       const res = this.withMatch(uid, (match, idx) => match.handleAction(idx, a)) || { ok: false, error: 'Not in a match' };
@@ -200,7 +202,7 @@ class Lobby {
   clearPending(uid) {
     this.queue = this.queue.filter((u) => u !== uid);
     const code = this.hostRoom.get(uid);
-    if (code) { this.rooms.delete(code); this.hostRoom.delete(uid); }
+    if (code) { this.rooms.delete(code); this.roomMap.delete(code); this.hostRoom.delete(uid); }
   }
 
   busy(uid) { return this.userMatch.has(uid); }
@@ -216,12 +218,13 @@ class Lobby {
     }
   }
 
-  createRoom(uid) {
+  createRoom(uid, mapId) {
     if (this.busy(uid)) return;
     this.clearPending(uid);
     let code;
     do { code = Array.from({ length: 4 }, () => ROOM_CHARS[Math.floor(Math.random() * ROOM_CHARS.length)]).join(''); } while (this.rooms.has(code));
     this.rooms.set(code, uid);
+    this.roomMap.set(code, maps.validMap(String(mapId || '')));
     this.hostRoom.set(uid, code);
     this.emitStatus(uid);
   }
@@ -233,19 +236,20 @@ class Lobby {
     if (!host) return s && s.emit('errorMsg', 'Room not found');
     if (host === uid) return s && s.emit('errorMsg', "That's your own room");
     if (this.busy(uid)) return;
+    const mapId = this.roomMap.get(code);
     this.clearPending(host);
     this.clearPending(uid);
-    this.startMatch([{ uid: host }, { uid }], 'pvp').catch((e) => console.error(e));
+    this.startMatch([{ uid: host }, { uid }], 'pvp', mapId).catch((e) => console.error(e));
   }
 
-  playBot(uid, diff) {
+  playBot(uid, diff, mapId) {
     if (this.busy(uid)) return;
     if (!BOT_NAMES[diff]) diff = 'normal';
     this.clearPending(uid);
-    this.startMatch([{ uid }, { bot: diff }], 'bot').catch((e) => console.error(e));
+    this.startMatch([{ uid }, { bot: diff }], 'bot', maps.validMap(String(mapId || ''))).catch((e) => console.error(e));
   }
 
-  async startMatch(entries, mode) {
+  async startMatch(entries, mode, mapId) {
     const players = [];
     for (const e of entries) {
       if (e.bot) {
@@ -263,6 +267,7 @@ class Lobby {
     const match = new Match({
       players,
       mode,
+      mapId,
       onSnapshot: (idx, snap) => {
         const s = this.sockets.get(uids[idx]);
         if (s) s.volatile.emit('snap', snap);
@@ -298,6 +303,7 @@ class Lobby {
   startInfo(match, idx) {
     return {
       matchId: match.id, you: idx, mode: match.mode, map: match.mapId,
+      mapDef: { name: match.map.name, path: match.map.path, theme: match.map.theme },
       players: match.players.map((p, i) => ({ name: p.name, level: p.level, rating: p.rating, skin: p.skin, banner: p.banner, isBot: !!p.isBot, unlocked: p.unlocked, cheats: i === idx && !!p.cheats })),
     };
   }

@@ -72,6 +72,42 @@
 
   const MAPS = {};
   for (const id in MAP_DEFS) MAPS[id] = buildMap(id, MAP_DEFS[id]);
+  const BUILTIN_MAPS = Object.keys(MAP_DEFS);
+  const THEMES = { meadow: MAP_DEFS.meadow.theme, canyon: MAP_DEFS.canyon.theme, glacier: MAP_DEFS.glacier.theme };
+
+  // Custom maps (map editor): path is a list of tile corners, starting at column -1 and ending at column COLS.
+  function validatePath(path) {
+    if (!Array.isArray(path) || path.length < 3 || path.length > 42) return 'A path needs 1 to 40 corner points';
+    for (const p of path) if (!Array.isArray(p) || p.length !== 2 || !Number.isInteger(p[0]) || !Number.isInteger(p[1])) return 'Invalid point';
+    const first = path[0], second = path[1], last = path[path.length - 1], beforeLast = path[path.length - 2];
+    if (first[0] !== -1 || second[0] < 0 || first[1] !== second[1]) return 'The path must start on the left edge';
+    if (last[0] !== COLS || beforeLast[0] >= COLS || last[1] !== beforeLast[1]) return 'The path must end on the right edge';
+    for (let i = 1; i < path.length - 1; i++) {
+      const [c, r] = path[i];
+      if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return 'Points must be on the board';
+    }
+    const seen = new Set();
+    let len = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const [c1, r1] = path[i], [c2, r2] = path[i + 1];
+      if ((c1 !== c2 && r1 !== r2) || (c1 === c2 && r1 === r2)) return 'Each step must go straight across or straight down';
+      const sc = Math.sign(c2 - c1), sr = Math.sign(r2 - r1);
+      let c = c1 + sc, r = r1 + sr;
+      for (;;) {
+        if (c >= 0 && c < COLS) {
+          const k = c + ',' + r;
+          if (seen.has(k)) return 'The path crosses or touches itself';
+          seen.add(k);
+        }
+        len++;
+        if (c === c2 && r === r2) break;
+        c += sc; r += sr;
+      }
+    }
+    if (len < 22) return 'The path is too short (at least 22 tiles)';
+    return null;
+  }
+  function registerMap(id, def) { MAPS[id] = buildMap(id, def); return MAPS[id]; }
 
   function posAt(map, d) {
     const segs = map.segs;
@@ -282,5 +318,6 @@
     COLS, ROWS, RULES, MAPS, posAt, ENEMIES, ENEMY_ORDER, TOWERS, TOWER_ORDER, DEFAULT_TOWERS,
     TARGET_MODES, towerStats, towerValue, sellValue, SENDS, roundWave, hpMulForRound,
     xpForNext, levelInfo, titleFor, SKINS, BANNERS, DEFAULT_COSMETICS, EMOTES, DAILY_WIN_BONUS,
+    BUILTIN_MAPS, THEMES, validatePath, registerMap,
   };
 });

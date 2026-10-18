@@ -56,6 +56,9 @@
       <div class="panel play">
         <button class="btn primary huge" id="btn-queue">Find a match</button>
         <p class="muted small center" id="queue-text">Play a random opponent who is online.</p>
+        <label class="map-pick">Map for bot games and rooms
+          <select id="map-pick" aria-label="Map"><option value="">Random</option></select>
+        </label>
         <div class="play-row">
           <div class="play-block">
             <h3>Practice against a bot</h3>
@@ -86,6 +89,7 @@
           <button data-tab="skins">Tower skins</button>
           <button data-tab="banners">Banners</button>
           <button data-tab="leaders">Leaderboard</button>
+          <button data-tab="maps" id="tab-maps" hidden>Map editor</button>
           <button data-tab="ideas" id="tab-ideas" hidden>Ideas</button>
           <button data-tab="admin" id="tab-admin" hidden>Admin</button>
         </nav>

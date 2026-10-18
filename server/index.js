@@ -8,6 +8,7 @@ const auth = require('./auth');
 const prog = require('./progression');
 const { Lobby } = require('./lobby');
 const admin = require('./admin');
+const maps = require('./maps');
 
 const PORT = Number(process.env.PORT) || 3000;
 const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;
@@ -104,6 +105,8 @@ function rateLimit(max, windowMs) {
   admin.mount(app, { store, lobby, authed, wrap });
   admin.mountIdeas(app, { store, authed, wrap });
   require('./friends').mount(app, { store, lobby, authed, wrap });
+  await maps.load(store);
+  maps.mount(app, { store, authed, wrap, isAdmin: admin.isAdmin, canEdit: (u) => admin.isAdmin(u) || !!u.mapAccess });
 
   server.listen(PORT, () => console.log(`Slime Siege running on http://localhost:${PORT}`));
 

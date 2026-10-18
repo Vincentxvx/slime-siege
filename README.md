@@ -5,12 +5,12 @@ A 1v1 online tower defense in the browser. Each player defends their own lane wh
 - **Modes:** quick match against anyone online, a private 4-letter room code for playing a friend, or practice bots (Easy, Normal, Hard). Rematch with one click.
 - **6 towers:** Archer, Cannon, Frost, Sniper, Gold Mine, Tesla Coil. Each has 3 upgrades and a targeting mode.
 - **7 slimes:** including armored Knights, invisible Ghosts, Big slimes that split, and the Slime King boss.
-- **3 maps:** Meadow, Canyon, Glacier, picked at random.
+- **Maps:** Meadow, Canyon, Glacier, plus custom maps from the built-in **map editor**. Pick the map for bot games and friend rooms; quick matches pick one at random.
 - **Progression:** XP and levels, coins, tower unlocks, tower skins, banners, a rating (Elo) leaderboard, match history and a first-win-of-the-day bonus.
 - **Friends:** add friends by username, see who is online or in a match, invite them straight into a 1v1, or watch their match live.
 - **Extras:** quick chat, sound effects (mute button), hotkeys, a preview of the next wave, and reconnecting after a page reload.
 
-**Controls:** `1`–`6` pick a tower, click to build (hold Shift to build several), `U` upgrade, `Del` sell, `Esc` cancel. Sends are on `Q W E / A S D / Z X C`; quick sends: `R` strongest, `F` best income, `V` everything you can afford.
+**Controls:** `1`–`6` pick a tower, click to build (hold Shift to build several), `U` upgrade, `T` targeting, `Del` sell, `Esc` cancel. Keyboard only: arrow keys move a cursor, `Enter` builds or selects. Sends are on `Q W E / A S D / Z X C`; quick sends: `R` strongest, `F` best income, `V` everything you can afford.
 
 No game engine and no image files: the art is drawn in code on a canvas. The server runs the whole simulation, so a player can't cheat by editing the page.
 
@@ -69,6 +69,7 @@ Set `ADMIN_USERS` to your username (on Render: **Environment → Add → `ADMIN_
 - delete an account
 - give every player bonus coins at once
 - choose which players can see the **Ideas** box
+- choose which players can use the **map editor** (draw a path on the grid, pick a look, save; maps are stored in the database)
 - choose which players get **in-game powers**: a Powers menu in matches to add gold, lives and income, spawn any slime for either side, skip to the next round, max out a tower or clear your lane. Matches where powers are used don't count toward rating or wins.
 
 ### Ideas box

@@ -429,3 +429,28 @@ input {
 .send-bulk button:hover { background: var(--ink-3); }
 .send-bulk kbd { font: 600 10px var(--body); color: var(--muted); margin-left: 2px; }
 .overlay.hint { color: #fff; text-shadow: 0 2px 0 var(--line), 0 0 6px rgba(14,9,24,.8); }
+
+/* ---------- map choice + editor ---------- */
+.map-pick { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 4px; }
+.map-pick select, .ed-side select { font: inherit; font-size: 14px; color: var(--text); background: var(--ink); border: 3px solid var(--line); border-radius: 10px; padding: 5px 8px; }
+.editor { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 18px; align-items: start; }
+#ed-canvas { width: 100%; aspect-ratio: 16 / 11; display: block; border: 3px solid var(--line); border-radius: 12px; cursor: crosshair; }
+.ed-status { margin: 8px 0 0; font-weight: 600; font-size: 14px; color: var(--muted); }
+.ed-status.bad { color: var(--red); }
+.ed-status.good { color: var(--lime); }
+.ed-side { display: grid; gap: 10px; align-content: start; }
+.ed-side h4 { font-size: 15px; }
+.ed-side label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.ed-side input { margin: 0; }
+.ed-steps { margin: 0; padding-left: 20px; font-size: 13px; color: var(--muted); display: grid; gap: 3px; }
+.ed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 180px; overflow: auto; }
+.ed-list li { display: flex; gap: 8px; align-items: baseline; background: var(--ink); border-radius: 8px; padding: 5px 8px; font-size: 14px; }
+.ed-list li span { flex: 1; font-weight: 600; }
+.ed-list small { color: var(--muted); }
+@media (max-width: 900px) { .editor { grid-template-columns: 1fr; } }
+
+/* upgrade box sits right under the header with a fixed height, so the button never jumps */
+.tower-panel .next-up { min-height: 54px; margin: 6px 0 2px; }
+.tower-panel .next-up small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tower-panel .next-up { height: 62px; min-height: 0; overflow: hidden; }
+.tower-panel .next-up b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

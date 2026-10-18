@@ -359,19 +359,19 @@
       if (G.placing) {
         const T0 = GD.TOWERS[G.placing];
         panel.innerHTML = `<h3>${T0.name}</h3><p class="muted">${T0.desc}</p>${statChips(GD.towerStats(G.placing, 0))}
-          <p class="hint">Click a free tile to build for <b class="gold">${T0.cost}</b>. Hold Shift to keep building. Esc cancels.</p>`;
+          <p class="hint">Click a free tile (or move with the arrows and press <kbd>Enter</kbd>) to build for <b class="gold">${T0.cost}</b>. Hold Shift to keep building. Esc cancels.</p>`;
       } else if (tw) {
         const type = GD.TOWER_ORDER[tw[1]], T0 = GD.TOWERS[type], level = tw[4];
         const next = T0.upgrades[level];
         const lvlLabel = level >= 3 ? 'Level MAX' : `Level ${level + 1}`;
         const upHtml = next
-          ? `<div class="next-up"><div><b>${next.name}</b><small>${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
+          ? `<div class="next-up"><div><b>${next.name}</b><small title="${next.desc}">${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
           : '<div class="next-up maxed"><b>Fully upgraded</b></div>';
         const modes = T0.base.kind === 'mine' || T0.base.kind === 'pulse' ? '' :
           `<div class="seg" role="group" aria-label="Targeting">${GD.TARGET_MODES.map((m, i) =>
             `<button data-mode="${m}" class="${tw[5] === i ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>`;
         panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span><button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button></div>
-          ${statChips(GD.towerStats(type, level))}${modes}${upHtml}`;
+          ${upHtml}${modes}${statChips(GD.towerStats(type, level))}`;
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
@@ -380,7 +380,8 @@
         panel.innerHTML = `<h3>Watching ${esc(G.info.watching)}</h3><p class="muted">You're seeing ${esc(G.info.watching)}'s lane. Their opponent's lane is in the small view above. Click a tower to see its stats.</p>`;
       } else {
         panel.innerHTML = `<h3>Defend your lane</h3><p class="muted">Pick a tower (keys 1–${G.me.unlocked.length}) and click a free tile.
-          Click a placed tower to upgrade or sell it. Sending slimes pressures your opponent and raises your income.</p>`;
+          Click a placed tower to upgrade or sell it. Sending slimes pressures your opponent and raises your income.</p>
+          <p class="hint">Keyboard: arrows move, <kbd>Enter</kbd> builds or selects, <kbd>U</kbd> upgrade, <kbd>T</kbd> targeting, <kbd>Del</kbd> sell.</p>`;
       }
     }
     // live affordability of the upgrade button
@@ -426,7 +427,7 @@
 
   function bindInput() {
     const c = $('cv-main');
-    c.addEventListener('mousemove', (e) => { G.hover = tileFromEvent(e); });
+    c.addEventListener('mousemove', (e) => { G.hover = tileFromEvent(e); G.cursor = Object.assign({}, G.hover); G.kb = false; });
     c.addEventListener('mouseleave', () => { G.hover = null; });
     c.addEventListener('contextmenu', (e) => { e.preventDefault(); setPlacing(null); G.selected = null; renderPanel(true); });
     c.addEventListener('click', (e) => {
@@ -445,6 +446,39 @@
     window.addEventListener('keydown', (e) => {
       if (!G.active || e.target.tagName === 'INPUT') return;
       if (e.key === 'Escape') { setPlacing(null); G.selected = null; renderPanel(true); return; }
+      // Keyboard play: arrows move a cursor, Enter builds or selects, T changes targeting
+      const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (dir) {
+        e.preventDefault();
+        if (!G.cursor) G.cursor = { col: 7, row: 5 };
+        else {
+          G.cursor.col = Math.max(0, Math.min(GD.COLS - 1, G.cursor.col + dir[0]));
+          G.cursor.row = Math.max(0, Math.min(GD.ROWS - 1, G.cursor.row + dir[1]));
+        }
+        G.hover = Object.assign({}, G.cursor);
+        G.kb = true;
+        return;
+      }
+      if (e.key === 'Enter' && G.cursor && G.cur && !G.spectator) {
+        e.preventDefault();
+        const { col, row } = G.cursor;
+        G.shift = e.shiftKey;
+        if (G.placing) {
+          if (!tileFree(col, row)) { toast("Can't build there", 'bad'); return; }
+          act({ type: 'place', tower: G.placing, col, row });
+          return;
+        }
+        const tw = G.cur.boards[G.you].towers.find((t) => t[2] === col && t[3] === row);
+        G.selected = tw ? tw[0] : null;
+        renderPanel(true);
+        return;
+      }
+      if ((e.key === 't' || e.key === 'T') && G.selected && G.cur) {
+        const tw = G.cur.boards[G.you].tmap.get(G.selected);
+        const kind = tw && GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.kind;
+        if (tw && kind !== 'mine' && kind !== 'pulse') act({ type: 'target', id: tw[0], mode: GD.TARGET_MODES[(tw[5] + 1) % GD.TARGET_MODES.length] });
+        return;
+      }
       const card = document.querySelector(`#tower-bar [data-key="${e.key}"]`);
       if (card) { setPlacing(G.placing === card.dataset.type ? null : card.dataset.type); return; }
       const bk = BULK_KEYS[e.key.toLowerCase()];
@@ -528,6 +562,10 @@
 
     for (const f of G.effects) if (f.b === bi) effect(g, f, t);
 
+    if (main && G.kb && G.cursor && !G.placing) {
+      g.strokeStyle = '#ffffff'; g.lineWidth = 2.5; g.setLineDash([6, 4]);
+      g.strokeRect(G.cursor.col * T + 2, G.cursor.row * T + 2, T - 4, T - 4); g.setLineDash([]);
+    }
     if (main && G.placing && G.hover) {
       const { col, row } = G.hover;
       const ok = tileFree(col, row) && b.gold >= GD.TOWERS[G.placing].cost;

@@ -98,7 +98,8 @@
     $('daily').hidden = !p.dailyAvailable;
     $('tab-admin').hidden = !p.isAdmin;
     $('tab-ideas').hidden = !p.ideas;
-    if ((S.tab === 'admin' && !p.isAdmin) || (S.tab === 'ideas' && !p.ideas)) {
+    $('tab-maps').hidden = !p.mapEditor;
+    if ((S.tab === 'admin' && !p.isAdmin) || (S.tab === 'ideas' && !p.ideas) || (S.tab === 'maps' && !p.mapEditor)) {
       S.tab = 'towers';
       document.querySelectorAll('.tabs [data-tab]').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'towers'));
       renderShop();
@@ -167,6 +168,7 @@
     if (S.tab === 'howto') { body.append(howTo()); return; }
     if (S.tab === 'admin') { renderAdmin(body); return; }
     if (S.tab === 'ideas') { renderIdeas(body); return; }
+    if (S.tab === 'maps') { renderMapEditor(body); return; }
     const grid = document.createElement('div');
     grid.className = 'items';
     if (S.tab === 'towers') {
@@ -204,7 +206,7 @@
     wrap.innerHTML = `
       <div class="howto-cols">
         <section><h4>Hold your lane</h4><p>You and your opponent each defend your own path. Every slime that reaches the end costs lives, and bigger slimes cost more. Hit zero lives and you lose.</p></section>
-        <section><h4>Build and upgrade</h4><p>Pick a tower with keys <kbd>1</kbd>–<kbd>6</kbd> and click a grass tile. Click a placed tower to upgrade it (<kbd>U</kbd>), change who it targets, or sell it (<kbd>Del</kbd>).</p></section>
+        <section><h4>Build and upgrade</h4><p>Pick a tower with keys <kbd>1</kbd>–<kbd>6</kbd> and click a grass tile. Click a placed tower to upgrade it (<kbd>U</kbd>), change who it targets (<kbd>T</kbd>), or sell it (<kbd>Del</kbd>). You can also play with the keyboard only: arrow keys move a cursor and <kbd>Enter</kbd> builds or selects.</p></section>
         <section><h4>Send slimes</h4><p>Sends drop extra slimes into your opponent's lane and permanently raise your income, paid every 6 seconds. Keys <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>. Quick sends: <kbd>R</kbd> strongest, <kbd>F</kbd> best income, <kbd>V</kbd> all you can afford. Spend too much on sends and your own defense cracks.</p></section>
         <section><h4>Level up</h4><p>Matches earn XP and coins, even losses. Spend coins on new towers, skins and banners. Your first win each day pays ${GD.DAILY_WIN_BONUS} bonus coins.</p></section>
       </div>
@@ -229,6 +231,93 @@
     }
     wrap.append(g);
     return wrap;
+  }
+
+  // ---------- map editor ----------
+  const ED = { pts: [], theme: 'meadow', name: '' };
+  function editorPath() {
+    if (!ED.pts.length) return null;
+    const p = [[-1, ED.pts[0][1]]].concat(ED.pts);
+    const last = ED.pts[ED.pts.length - 1];
+    if (last[0] === GD.COLS - 1) p.push([GD.COLS, last[1]]);
+    return p;
+  }
+  function renderMapEditor(body) {
+    const mine = S.maps.filter((m) => m.custom);
+    body.innerHTML = `
+      <div class="editor">
+        <div class="ed-main">
+          <canvas id="ed-canvas" width="${GD.COLS * 40}" height="${GD.ROWS * 40}" aria-label="Map editor grid"></canvas>
+          <p class="ed-status" id="ed-status"></p>
+        </div>
+        <div class="ed-side">
+          <h4>Draw a path</h4>
+          <ol class="ed-steps">
+            <li>Click a tile in the <b>left column</b>. Slimes enter there.</li>
+            <li>Click tiles in the same row or column to add corners.</li>
+            <li>Finish with a tile in the <b>right column</b>.</li>
+          </ol>
+          <label>Name <input id="ed-name" maxlength="24" placeholder="My map" value="${esc(ED.name)}"></label>
+          <label>Look <select id="ed-theme">${Object.keys(GD.THEMES).map((t) => `<option value="${t}" ${t === ED.theme ? 'selected' : ''}>${GD.MAPS[t].name}</option>`).join('')}</select></label>
+          <div class="row"><button class="btn" id="ed-undo">Undo</button><button class="btn" id="ed-clear">Clear</button><button class="btn primary" id="ed-save">Save map</button></div>
+          <h4>Custom maps</h4>
+          <ul class="ed-list">${mine.map((m) => `<li><span>${esc(m.name)}</span><small>by ${esc(m.author)}</small>${
+            m.authorId === S.profile.id || S.profile.isAdmin ? `<button class="fx" data-del="${m.id}" title="Delete map">×</button>` : ''}</li>`).join('') || '<li class="muted">No custom maps yet.</li>'}</ul>
+        </div>
+      </div>`;
+    const cv = $('ed-canvas'), g = cv.getContext('2d');
+    const draw = () => {
+      const th = GD.THEMES[ED.theme], T = 40;
+      for (let x = 0; x < GD.COLS; x++) for (let y = 0; y < GD.ROWS; y++) { g.fillStyle = th.ground[(x + y) % 2]; g.fillRect(x * T, y * T, T, T); }
+      g.fillStyle = 'rgba(155,225,93,0.25)'; g.fillRect(0, 0, T, GD.ROWS * T);
+      g.fillStyle = 'rgba(255,111,168,0.22)'; g.fillRect((GD.COLS - 1) * T, 0, T, GD.ROWS * T);
+      const p = editorPath();
+      if (p) {
+        const pts = p.map(([c, r]) => [(c + 0.5) * T, (r + 0.5) * T]);
+        for (const [col, w] of [[th.edge, T * 0.96], [th.path, T * 0.8]]) {
+          g.strokeStyle = col; g.lineWidth = w; g.lineJoin = 'round'; g.lineCap = 'round';
+          g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+        }
+        g.fillStyle = '#1e1530';
+        ED.pts.forEach(([c, r], i) => { g.beginPath(); g.arc((c + 0.5) * T, (r + 0.5) * T, i === ED.pts.length - 1 ? 7 : 4, 0, 7); g.fill(); });
+      }
+      const full = p && p[p.length - 1][0] === GD.COLS;
+      const err = full ? GD.validatePath(p) : null;
+      $('ed-status').textContent = !p ? 'Click a tile in the green left column to start.'
+        : err ? err : full ? 'Path complete. Give it a name and save it.' : 'Keep going until you reach the pink right column.';
+      $('ed-status').className = 'ed-status' + (err ? ' bad' : full ? ' good' : '');
+      $('ed-save').disabled = !full || !!err;
+    };
+    cv.onclick = (e) => {
+      const r = cv.getBoundingClientRect();
+      const c = Math.floor(((e.clientX - r.left) / r.width) * GD.COLS), row = Math.floor(((e.clientY - r.top) / r.height) * GD.ROWS);
+      const last = ED.pts[ED.pts.length - 1];
+      if (!last) { if (c !== 0) return toast('Start in the left column', 'bad'); ED.pts.push([c, row]); return draw(); }
+      if (last[0] === GD.COLS - 1 && ED.pts.length > 1) return toast('The path is finished. Undo to change it.', 'bad');
+      if (c !== last[0] && row !== last[1]) return toast('Pick a tile in the same row or column', 'bad');
+      if (c === last[0] && row === last[1]) return;
+      ED.pts.push([c, row]);
+      draw();
+    };
+    $('ed-undo').onclick = () => { ED.pts.pop(); draw(); };
+    $('ed-clear').onclick = () => { ED.pts = []; draw(); };
+    $('ed-theme').onchange = (e) => { ED.theme = e.target.value; draw(); };
+    $('ed-name').oninput = (e) => { ED.name = e.target.value; };
+    $('ed-save').onclick = async () => {
+      try {
+        await api('/api/maps', { name: ED.name, path: editorPath(), themeId: ED.theme });
+        toast(`Saved "${ED.name}"`, 'good');
+        ED.pts = []; ED.name = '';
+        await loadMaps();
+      } catch (err) { toast(err.message, 'bad'); }
+    };
+    body.querySelector('.ed-list').onclick = async (e) => {
+      const b = e.target.closest('[data-del]');
+      if (!b) return;
+      if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Delete?'; setTimeout(() => { b.classList.remove('armed'); b.textContent = '×'; }, 3000); return; }
+      try { await api(`/api/maps/${b.dataset.del}/delete`, {}); toast('Map deleted', 'good'); await loadMaps(); } catch (err) { toast(err.message, 'bad'); }
+    };
+    draw();
   }
 
   // ---------- ideas box ----------
@@ -319,7 +408,7 @@
     const rows = () => {
       const q = $('admin-search').value.trim().toLowerCase();
       $('admin-rows').innerHTML = S.adminUsers.filter((u) => u.username.toLowerCase().includes(q)).map((u) =>
-        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.cheatAccess && !u.admin ? ' <em class="tag pow">powers</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
+        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.cheatAccess && !u.admin ? ' <em class="tag pow">powers</em>' : ''}${u.mapAccess && !u.admin ? ' <em class="tag idea">maps</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
         `<td>${u.level}</td><td>${u.coins}</td><td>${u.rating}</td><td>${u.wins}–${u.losses}</td></tr>`).join('') ||
         '<tr><td colspan="5" class="muted">No players match.</td></tr>';
     };
@@ -364,6 +453,7 @@
         <fieldset><legend>Towers</legend>${checks('unlocked', GD.TOWER_ORDER, u.unlocked, (id) => GD.TOWERS[id].name, GD.DEFAULT_TOWERS)}</fieldset>
         <fieldset><legend>Cosmetics</legend>${checks('owned', Object.keys(GD.SKINS).concat(Object.keys(GD.BANNERS)), u.owned,
           (id) => (GD.SKINS[id] ? 'Skin: ' + GD.SKINS[id].name : 'Banner: ' + GD.BANNERS[id].name), GD.DEFAULT_COSMETICS)}</fieldset>
+        <label class="chk"><input type="checkbox" name="mapAccess" ${u.mapAccess || u.admin ? 'checked' : ''} ${u.admin ? 'disabled' : ''}>Can make maps</label>
         <label class="chk"><input type="checkbox" name="cheatAccess" ${u.cheatAccess || u.admin ? 'checked' : ''} ${u.admin ? 'disabled' : ''}>In-game powers (gold, lives, slimes)</label>
         <label class="chk"><input type="checkbox" name="ideasAccess" ${u.ideasAccess || u.admin ? 'checked' : ''} ${u.admin ? 'disabled' : ''}>Can see the Ideas box</label>
         <label class="chk ban"><input type="checkbox" name="banned" ${u.banned ? 'checked' : ''} ${isMe ? 'disabled' : ''}>Banned (can't log in)</label>
@@ -386,7 +476,7 @@
       body.unlocked = [...f.querySelectorAll('input[name=unlocked]:checked')].map((c) => c.value);
       body.owned = [...f.querySelectorAll('input[name=owned]:checked')].map((c) => c.value);
       body.banned = f.banned.checked;
-      if (!u.admin) { body.ideasAccess = f.ideasAccess.checked; body.cheatAccess = f.cheatAccess.checked; }
+      if (!u.admin) { body.ideasAccess = f.ideasAccess.checked; body.cheatAccess = f.cheatAccess.checked; body.mapAccess = f.mapAccess.checked; }
       try {
         const r = await api('/api/admin/user/' + u.id, body);
         Object.assign(u, r.user);
@@ -438,10 +528,10 @@
     S.botDiff = b.dataset.d;
     document.querySelectorAll('#bot-diff [data-d]').forEach((x) => x.classList.toggle('on', x === b));
   }));
-  $('btn-bot').addEventListener('click', () => S.socket && S.socket.emit('playBot', S.botDiff));
+  $('btn-bot').addEventListener('click', () => S.socket && S.socket.emit('playBot', S.botDiff, pickedMap()));
   $('room-host').addEventListener('click', (e) => {
     if (!S.socket) return;
-    if (e.target.id === 'btn-room') S.socket.emit('createRoom');
+    if (e.target.id === 'btn-room') S.socket.emit('createRoom', pickedMap());
     if (e.target.id === 'btn-room-cancel') S.socket.emit('leaveQueue');
   });
   $('room-join').addEventListener('submit', (e) => {
@@ -470,6 +560,22 @@
       ? `<div class="room-code"><span>Your code</span><b>${esc(st.room)}</b></div><p class="muted small">Your friend enters this code and clicks Join.</p><button class="btn ghost" id="btn-room-cancel">Close room</button>`
       : '<button class="btn" id="btn-room">Create room code</button>';
   }
+
+  // ---------- maps ----------
+  S.maps = [];
+  async function loadMaps() {
+    try {
+      const { maps } = await api('/api/maps');
+      S.maps = maps;
+      for (const m of maps) if (!GD.MAPS[m.id]) GD.registerMap(m.id, { name: m.name, path: m.path, theme: m.theme });
+      const sel = $('map-pick'), keep = sel.value;
+      sel.innerHTML = '<option value="">Random</option>' + maps.map((m) => `<option value="${m.id}">${esc(m.name)}${m.custom ? ' (custom)' : ''}</option>`).join('');
+      if (maps.some((m) => m.id === keep)) sel.value = keep;
+      if (S.tab === 'maps') renderShop();
+    } catch (e) { /* ignore */ }
+  }
+  const pickedMap = () => $('map-pick').value || '';
+  const ensureMap = (info) => { if (info.mapDef && !GD.MAPS[info.map]) GD.registerMap(info.map, info.mapDef); };
 
   // ---------- friends ----------
   const STATUS_LABEL = { online: 'Online', playing: 'In a match', offline: 'Offline' };
@@ -552,11 +658,12 @@
     socket.on('friendsChanged', () => loadFriends());
     socket.on('inviteSent', () => toast('Invite sent', 'good'));
     socket.on('invite', (inv) => showInvite(inv));
-    socket.on('connect', () => loadFriends());
+    socket.on('connect', () => { loadFriends(); loadMaps(); });
     socket.on('profile', (p) => { S.profile = p; renderProfile(); if (S.tab !== 'admin' && !window.Game.isActive()) renderShop(); });
     socket.on('errorMsg', (m) => toast(m, 'bad'));
     socket.on('kicked', (k) => { toast(k.reason, 'bad'); S.socket = null; logout(); });
     socket.on('matchStart', (info) => {
+      ensureMap(info);
       hideInvite();
       show('game');
       window.Game.start(info, {
@@ -577,6 +684,7 @@
     socket.on('snap', (s) => window.Game.snap(s));
     const backToLobby = () => { window.Game.stop(); renderProfile(); renderShop(); show('lobby'); loadFriends(); };
     socket.on('spectateStart', (info) => {
+      ensureMap(info);
       hideInvite();
       show('game');
       window.Game.start(info, {
@@ -598,7 +706,7 @@
       btn.textContent = mode === 'pvp' ? 'Rematch' : 'Play again';
       btn.onclick = () => {
         if (mode === 'pvp') socket.emit('rematch');
-        else { window.Game.stop(); renderProfile(); socket.emit('playBot', S.botDiff); }
+        else { window.Game.stop(); renderProfile(); socket.emit('playBot', S.botDiff, pickedMap()); }
       };
     });
     socket.on('disconnect', () => { if (window.Game.isActive()) window.Game.toast('Connection lost, reconnecting…', 'bad'); });
