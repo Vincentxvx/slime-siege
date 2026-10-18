@@ -407,6 +407,9 @@
     for (const e of b.enemies) if (e[6] && !m.has(e[0])) m.set(e[0], t);
   }
 
+  // floating labels stay inside the board for towers on the edge columns/top row
+  const labelX = (x) => Math.min(W - 28, Math.max(28, x));
+
   // Build, upgrade and sell effects, found by comparing towers between snapshots (both lanes)
   function towerChanges(bi, prevB, curB) {
     const t = now(), anim = G.anim[bi];
@@ -420,14 +423,14 @@
         const color = TIER_COLORS[Math.min(3, tw[4])];
         anim.set(tw[0], { k: 'pop', t0: t, dur: 0.3 });
         G.effects.push({ b: bi, k: 'spark', x1: x, y1: y, color, t0: t, dur: 0.6, seed: tw[0] + tw[4] });
-        G.effects.push({ b: bi, k: 'txt', x1: x, y1: y - T * 0.55, text: tw[4] >= 3 ? 'MAX' : 'Level ' + (tw[4] + 1), color, t0: t, dur: 1.1 });
+        G.effects.push({ b: bi, k: 'txt', x1: labelX(x), y1: Math.max(T * 0.75, y - T * 0.55), text: tw[4] >= 3 ? 'MAX' : 'Level ' + (tw[4] + 1), color, t0: t, dur: 1.1 });
       }
     }
     for (const old of prevB.towers) {
       if (curB.tmap.has(old[0])) continue;
       const x = (old[2] + 0.5) * T, y = (old[3] + 0.5) * T;
       G.effects.push({ b: bi, k: 'coins', x1: x, y1: y, t0: t, dur: 0.7 });
-      if (bi === G.you) G.effects.push({ b: bi, k: 'txt', x1: x, y1: y - 10, text: '+' + GD.sellValue(GD.TOWER_ORDER[old[1]], old[4]), color: '#ffd35c', t0: t, dur: 1.1 });
+      if (bi === G.you) G.effects.push({ b: bi, k: 'txt', x1: labelX(x), y1: Math.max(T * 0.75, y - 10), text: '+' + GD.sellValue(GD.TOWER_ORDER[old[1]], old[4]), color: '#ffd35c', t0: t, dur: 1.1 });
     }
     for (const [id, a] of anim) if (t - a.t0 > a.dur) anim.delete(id);
   }
