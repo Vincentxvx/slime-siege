@@ -414,23 +414,44 @@
     });
   }
 
-  function statChips(s) {
+  // [label, value] pairs for a tower's stats; `all` also lists stats at their default (0 damage, 1 target)
+  function chipList(s, all) {
     const c = [];
     if (s.kind === 'mine') c.push(['Gold / tick', s.gold]);
     else {
-      if (s.dmg) c.push(['Damage', +s.dmg.toFixed(1)]);
+      if (s.dmg || all) c.push(['Damage', +(s.dmg || 0).toFixed(1)]);
       if (s.kind === 'pulse') c.push(['Slow', Math.round(s.slow * 100) + '%']);
       c.push([s.kind === 'pulse' ? 'Pulses/s' : 'Shots/s', +s.rate.toFixed(2)]);
       c.push(['Range', s.range > 50 ? 'Map' : +s.range.toFixed(1)]);
-      if (s.targets > 1) c.push(['Targets', s.targets]);
+      if (s.targets > 1 || (all && s.kind === 'arrow')) c.push(['Targets', s.targets || 1]);
       if (s.chains) c.push(['Jumps', s.chains]);
       if (s.splash) c.push(['Blast', +s.splash.toFixed(1)]);
     }
+    return c;
+  }
+  function tagList(s) {
     const tags = [];
     if (s.detect) tags.push('Sees ghosts');
     if (s.pierceArmor) tags.push('Ignores armor');
-    return '<div class="chips">' + c.map(([k, v]) => `<span><b>${v}</b>${k}</span>`).join('') + '</div>' +
-      (tags.length ? '<div class="tags">' + tags.map((t) => `<em>${t}</em>`).join('') + '</div>' : '');
+    return tags;
+  }
+
+  // Stat chips. With `nx` (the stats after the next upgrade) every stat it changes shows "old → new".
+  function statChips(s, nx) {
+    const c = chipList(s).map(([k, v]) => [k, v, null]);
+    if (nx) {
+      const full = chipList(s, true);
+      for (const [k, v] of chipList(nx)) {
+        const cur = c.find((x) => x[0] === k);
+        if (cur) { if (cur[1] !== v) cur[2] = v; }
+        else c.push([k, (full.find((x) => x[0] === k) || [k, 0])[1], v]);
+      }
+    }
+    const tags = tagList(s), newTags = nx ? tagList(nx).filter((t) => !tags.includes(t)) : [];
+    return '<div class="chips">' + c.map(([k, v, n]) =>
+      n == null ? `<span><b>${v}</b>${k}</span>` : `<span class="chg"><b>${v}<i>→${n}</i></b>${k}</span>`).join('') + '</div>' +
+      (tags.length || newTags.length ? '<div class="tags">' + tags.map((t) => `<em>${t}</em>`).join('') +
+        newTags.map((t) => `<em class="chg">→ ${t}</em>`).join('') + '</div>' : '');
   }
 
   function renderPanel(force) {
@@ -455,7 +476,7 @@
           `<div class="seg" role="group" aria-label="Targeting">${GD.TARGET_MODES.map((m, i) =>
             `<button data-mode="${m}" class="${tw[5] === i ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>`;
         panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span><button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button></div>
-          ${upHtml}${modes}${statChips(GD.towerStats(type, level))}`;
+          ${upHtml}${modes}${statChips(GD.towerStats(type, level), next ? GD.towerStats(type, level + 1) : null)}`;
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
@@ -468,11 +489,14 @@
           <p class="hint">Keyboard: arrows move, <kbd>Enter</kbd> builds or selects, <kbd>U</kbd> upgrade, <kbd>T</kbd> targeting, <kbd>Del</kbd> sell.</p>`;
       }
     }
-    // live affordability of the upgrade button
+    // live affordability of the upgrade button: says how much gold is missing
     const up = panel.querySelector('[data-act=upgrade]');
     if (up && tw && me) {
       const u = GD.TOWERS[GD.TOWER_ORDER[tw[1]]].upgrades[tw[4]];
-      up.disabled = !u || me.gold < u.cost;
+      const short = u ? u.cost - me.gold : 0;
+      up.disabled = !u || short > 0;
+      const label = u ? (short > 0 ? `Need <b>${short}</b> more` : `Upgrade <b>${u.cost}</b>`) : '';
+      if (up.dataset.label !== label) { up.dataset.label = label; up.innerHTML = label; }
     }
   }
 
