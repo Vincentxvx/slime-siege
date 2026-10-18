@@ -267,6 +267,7 @@ class Match {
     const d = pierce ? dmg : dmg - (E.armor || 0);
     if (d <= 0) return;
     e.hp -= d;
+    e.hit = true; // took real damage since the last snapshot (the client flashes it)
     if (e.hp <= 0) {
       e.dead = true;
       if (!e.sent) b.gold += E.bounty; // sent slimes pay no bounty, so sending is never a gift
@@ -458,14 +459,14 @@ class Match {
       mine: mineGold,
       cds: GD.SENDS.map((p) => r2(Math.max(0, (b.sendReady[p.id] || 0) - this.time))),
       towers: b.towers.map((t) => [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target]]),
-      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.slowUntil > this.time ? 1 : 0, e.sent ? 1 : 0]),
+      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.slowUntil > this.time ? 1 : 0, e.sent ? 1 : 0, e.hit ? 1 : 0]),
       ev: b.events,
     };
   }
 
   emitSnapshots() {
     const boards = this.boards.map((b) => this.boardSnap(b));
-    for (const b of this.boards) b.events = [];
+    for (const b of this.boards) { b.events = []; for (const e of b.enemies) e.hit = false; }
     const base = {
       t: r2(this.time), state: this.state, round: this.round,
       nextRound: r2(this.nextRoundAt - Math.max(0, this.time)),

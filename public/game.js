@@ -12,6 +12,7 @@
     effects: [], aim: [{}, {}], hits: [new Map(), new Map()], anim: [new Map(), new Map()], built: false, panelKey: '', lastRound: -1,
   };
   const HIT_FLASH = 0.16; // seconds a slime flashes white after losing HP
+  const HIT_GAP = 0.33;   // at most ~3 flashes per second per slime
   const DROP = 0.18;      // seconds a new tower takes to drop onto its tile
   const TIER_COLORS = ['#efe7ff', '#f0a564', '#e6edf5', '#ffd35c']; // text/sparks per level: base, bronze, silver, gold
 
@@ -327,9 +328,10 @@
       b.tmap = new Map(b.towers.map((x) => [x[0], x]));
       b.emap = new Map(b.enemies.map((x) => [x[0], x]));
       processEvents(i, b);
+      hits(i, b);
       // the previous snapshot has no maps if it was from the picking phase
       const pb = G.prev && G.prev.boards[i];
-      if (pb && pb.emap) { deaths(i, pb, b); hits(i, pb, b); towerChanges(i, pb, b); }
+      if (pb && pb.emap) { deaths(i, pb, b); towerChanges(i, pb, b); }
     });
     if (G.selected && !G.cur.boards[G.you].tmap.has(G.selected)) G.selected = null;
     updateHud();
@@ -396,15 +398,13 @@
     }
   }
 
-  // Slimes whose HP dropped since the last snapshot flash white for a moment
-  // (no flash means the shots bounced off, e.g. arrows on a Knight's armor)
-  function hits(bi, prevB, curB) {
+  // Slimes the server says took damage since the last snapshot (e[6]) flash white for a moment
+  // (no flash means the shots bounced off, e.g. arrows on a Knight's armor).
+  // A new flash only starts once the last one is HIT_GAP old, so slimes under constant fire don't strobe.
+  function hits(bi, b) {
     const t = now(), m = G.hits[bi];
-    for (const e of curB.enemies) {
-      const pe = prevB.emap.get(e[0]);
-      if (pe && e[3] < pe[3]) m.set(e[0], t);
-    }
-    for (const [id, at] of m) if (t - at > HIT_FLASH) m.delete(id);
+    for (const [id, at] of m) if (t - at > HIT_GAP) m.delete(id);
+    for (const e of b.enemies) if (e[6] && !m.has(e[0])) m.set(e[0], t);
   }
 
   // Build, upgrade and sell effects, found by comparing towers between snapshots (both lanes)
