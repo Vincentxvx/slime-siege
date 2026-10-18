@@ -67,6 +67,11 @@ Set `ADMIN_USERS` to your username (on Render: **Environment → Add → `ADMIN_
 - set a new password for someone who forgot theirs
 - delete an account
 - give every player bonus coins at once
+- choose which players can see the **Ideas** box
+
+### Ideas box
+
+An **Ideas** tab where people post and upvote suggestions for the game. Only admins and players with "Can see the Ideas box" ticked in the Admin tab can see it. Admins set a status on each idea (New, Planned, Done, Not doing) and can delete any idea; players can delete their own.
 
 Changes reach players who are online right away. Every admin action is written to the server log as `[admin] …`.
 

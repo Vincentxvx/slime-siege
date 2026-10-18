@@ -15,7 +15,7 @@ function summary(u) {
     id: u.id, username: u.username, level: GD.levelInfo(u.xp).level, xp: u.xp, coins: u.coins,
     wins: u.wins, losses: u.losses, botWins: u.botWins, rating: u.rating || 1000, games: u.games,
     bestRound: u.bestRound, createdAt: u.createdAt, banned: !!u.banned, admin: isAdmin(u),
-    unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner,
+    unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner, ideasAccess: !!u.ideasAccess,
   };
 }
 
@@ -55,6 +55,10 @@ function mount(app, { store, lobby, authed, wrap }) {
       u.owned = ALL_COSMETICS.filter((c) => b.owned.includes(c) || GD.DEFAULT_COSMETICS.includes(c));
       if (!u.owned.includes(u.skin)) u.skin = 'skin_classic';
       if (!u.owned.includes(u.banner)) u.banner = 'banner_slate';
+    }
+    if (typeof b.ideasAccess === 'boolean' && b.ideasAccess !== !!u.ideasAccess) {
+      u.ideasAccess = b.ideasAccess;
+      changes.push(b.ideasAccess ? 'ideas access on' : 'ideas access off');
     }
     if (typeof b.banned === 'boolean' && b.banned !== !!u.banned) {
       if (u.id === req.user.id) return res.status(400).json({ error: "You can't ban yourself" });
@@ -98,4 +102,73 @@ function mount(app, { store, lobby, authed, wrap }) {
   }));
 }
 
-module.exports = { mount, isAdmin, summary };
+// ---------- Ideas box: visible to admins and players the admin enabled ----------
+const IDEA_STATUSES = ['new', 'planned', 'done', 'rejected'];
+const canSeeIdeas = (u) => isAdmin(u) || !!(u && u.ideasAccess);
+
+function mountIdeas(app, { store, authed, wrap }) {
+  let ideas = null; // cached list
+  const load = async () => { if (!ideas) ideas = (await store.getMeta('ideas')) || []; return ideas; };
+  const save = () => store.setMeta('ideas', ideas);
+  const gate = (req, res, next) => (canSeeIdeas(req.user) ? next() : res.status(403).json({ error: "You don't have access to the ideas box" }));
+  const view = (i, me) => ({
+    id: i.id, text: i.text, author: i.author, at: i.at, status: i.status,
+    votes: i.votes.length, voted: i.votes.includes(me.id), mine: i.authorId === me.id,
+  });
+  const list = (me) => ideas.slice().sort((a, b) => b.votes.length - a.votes.length || b.at - a.at).map((i) => view(i, me));
+
+  app.get('/api/ideas', authed, gate, wrap(async (req, res) => {
+    await load();
+    res.json({ ideas: list(req.user), admin: isAdmin(req.user), statuses: IDEA_STATUSES });
+  }));
+
+  app.post('/api/ideas', authed, gate, wrap(async (req, res) => {
+    await load();
+    const text = String((req.body || {}).text || '').trim().replace(/\s+/g, ' ');
+    if (text.length < 3) return res.status(400).json({ error: 'Write a bit more' });
+    if (text.length > 500) return res.status(400).json({ error: 'Keep it under 500 characters' });
+    const today = ideas.filter((i) => i.authorId === req.user.id && Date.now() - i.at < 864e5).length;
+    if (today >= 20 && !isAdmin(req.user)) return res.status(429).json({ error: 'That is enough ideas for today' });
+    ideas.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text, author: req.user.username, authorId: req.user.id, at: Date.now(), status: 'new', votes: [req.user.id] });
+    await save();
+    res.json({ ideas: list(req.user) });
+  }));
+
+  const find = async (req, res) => {
+    await load();
+    const i = ideas.find((x) => x.id === String(req.params.id));
+    if (!i) res.status(404).json({ error: 'Idea not found' });
+    return i;
+  };
+
+  app.post('/api/ideas/:id/vote', authed, gate, wrap(async (req, res) => {
+    const i = await find(req, res);
+    if (!i) return;
+    const k = i.votes.indexOf(req.user.id);
+    if (k >= 0) i.votes.splice(k, 1); else i.votes.push(req.user.id);
+    await save();
+    res.json({ ideas: list(req.user) });
+  }));
+
+  app.post('/api/ideas/:id/status', authed, gate, wrap(async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ error: 'Admins only' });
+    const i = await find(req, res);
+    if (!i) return;
+    const st = String((req.body || {}).status);
+    if (!IDEA_STATUSES.includes(st)) return res.status(400).json({ error: 'Invalid status' });
+    i.status = st;
+    await save();
+    res.json({ ideas: list(req.user) });
+  }));
+
+  app.post('/api/ideas/:id/delete', authed, gate, wrap(async (req, res) => {
+    const i = await find(req, res);
+    if (!i) return;
+    if (!isAdmin(req.user) && i.authorId !== req.user.id) return res.status(403).json({ error: 'You can only delete your own ideas' });
+    ideas = ideas.filter((x) => x !== i);
+    await save();
+    res.json({ ideas: list(req.user) });
+  }));
+}
+
+module.exports = { mount, mountIdeas, isAdmin, canSeeIdeas, summary };

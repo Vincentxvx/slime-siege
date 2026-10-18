@@ -97,6 +97,12 @@
     $('profile-stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
     $('daily').hidden = !p.dailyAvailable;
     $('tab-admin').hidden = !p.isAdmin;
+    $('tab-ideas').hidden = !p.ideas;
+    if ((S.tab === 'admin' && !p.isAdmin) || (S.tab === 'ideas' && !p.ideas)) {
+      S.tab = 'towers';
+      document.querySelectorAll('.tabs [data-tab]').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'towers'));
+      renderShop();
+    }
     const hist = p.history || [];
     $('history').innerHTML = hist.length
       ? hist.map((h) => `<li class="${h.draw ? 'draw' : h.won ? 'win' : 'loss'}"><b>${h.draw ? 'Draw' : h.won ? 'Win' : 'Loss'}</b><span>vs ${esc(h.opp || '?')}</span><small>R${h.round} · ${ago(h.at)}</small></li>`).join('')
@@ -160,6 +166,7 @@
     }
     if (S.tab === 'howto') { body.append(howTo()); return; }
     if (S.tab === 'admin') { renderAdmin(body); return; }
+    if (S.tab === 'ideas') { renderIdeas(body); return; }
     const grid = document.createElement('div');
     grid.className = 'items';
     if (S.tab === 'towers') {
@@ -224,6 +231,70 @@
     return wrap;
   }
 
+  // ---------- ideas box ----------
+  const IDEA_LABEL = { new: 'New', planned: 'Planned', done: 'Done', rejected: 'Not doing' };
+  async function renderIdeas(body) {
+    body.innerHTML = '<p class="muted">Loading ideas…</p>';
+    let data;
+    try { data = await api('/api/ideas'); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    if (S.tab !== 'ideas') return;
+    const draw = (d) => {
+      data = Object.assign(data, d);
+      const filter = S.ideaFilter || 'open';
+      const shown = data.ideas.filter((i) => filter === 'all' || (filter === 'open' ? i.status === 'new' || i.status === 'planned' : i.status === filter));
+      $('idea-list').innerHTML = shown.map((i) => `
+        <li class="idea st-${i.status}" data-id="${i.id}">
+          <button class="vote ${i.voted ? 'on' : ''}" data-act="vote" aria-pressed="${i.voted}" title="Upvote"><span>▲</span><b>${i.votes}</b></button>
+          <div class="idea-body"><p>${esc(i.text)}</p><small>${esc(i.author)}, ${ago(i.at)}</small></div>
+          <div class="idea-side">
+            ${data.admin
+              ? `<select data-act="status" aria-label="Status">${data.statuses.map((st) => `<option value="${st}" ${st === i.status ? 'selected' : ''}>${IDEA_LABEL[st]}</option>`).join('')}</select>`
+              : `<em class="status">${IDEA_LABEL[i.status]}</em>`}
+            ${data.admin || i.mine ? '<button class="btn ghost del" data-act="del">Delete</button>' : ''}
+          </div>
+        </li>`).join('') || '<li class="empty muted">No ideas here yet. Post the first one.</li>';
+    };
+    body.innerHTML = `
+      <div class="ideas">
+        <form id="idea-form" class="idea-form">
+          <textarea id="idea-text" maxlength="500" rows="2" placeholder="A new tower, a map, a balance change…" aria-label="Your idea"></textarea>
+          <button class="btn primary" type="submit">Post idea</button>
+        </form>
+        <p class="muted small">Only ${data.admin ? 'you and the players you enable in the Admin tab' : 'the admin and invited players'} can see this box.</p>
+        <div class="seg idea-filter" role="group" aria-label="Filter">
+          ${['open', 'done', 'rejected', 'all'].map((k) => `<button data-f="${k}" class="${(S.ideaFilter || 'open') === k ? 'on' : ''}">${{ open: 'Open', done: 'Done', rejected: 'Not doing', all: 'All' }[k]}</button>`).join('')}
+        </div>
+        <ol class="idea-list" id="idea-list"></ol>
+      </div>`;
+    draw(data);
+    $('idea-form').onsubmit = async (e) => {
+      e.preventDefault();
+      try { draw(await api('/api/ideas', { text: $('idea-text').value })); $('idea-text').value = ''; toast('Idea posted', 'good'); }
+      catch (err) { toast(err.message, 'bad'); }
+    };
+    body.querySelector('.idea-filter').onclick = (e) => {
+      const b = e.target.closest('[data-f]');
+      if (!b) return;
+      S.ideaFilter = b.dataset.f;
+      body.querySelectorAll('.idea-filter button').forEach((x) => x.classList.toggle('on', x === b));
+      draw(data);
+    };
+    const act = async (id, path, payload) => { try { draw(await api(`/api/ideas/${id}/${path}`, payload || {})); } catch (err) { toast(err.message, 'bad'); } };
+    $('idea-list').onclick = (e) => {
+      const b = e.target.closest('[data-act]'), li = e.target.closest('li[data-id]');
+      if (!b || !li || b.tagName === 'SELECT') return;
+      if (b.dataset.act === 'vote') act(li.dataset.id, 'vote');
+      if (b.dataset.act === 'del') {
+        if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Sure?'; setTimeout(() => { b.classList.remove('armed'); b.textContent = 'Delete'; }, 3000); return; }
+        act(li.dataset.id, 'delete');
+      }
+    };
+    $('idea-list').onchange = (e) => {
+      const li = e.target.closest('li[data-id]');
+      if (e.target.dataset.act === 'status' && li) act(li.dataset.id, 'status', { status: e.target.value });
+    };
+  }
+
   // ---------- admin ----------
   const xpAtLevel = (lvl) => { let xp = 0; for (let l = 1; l < lvl; l++) xp += GD.xpForNext(l); return xp; };
 
@@ -248,7 +319,7 @@
     const rows = () => {
       const q = $('admin-search').value.trim().toLowerCase();
       $('admin-rows').innerHTML = S.adminUsers.filter((u) => u.username.toLowerCase().includes(q)).map((u) =>
-        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
+        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
         `<td>${u.level}</td><td>${u.coins}</td><td>${u.rating}</td><td>${u.wins}–${u.losses}</td></tr>`).join('') ||
         '<tr><td colspan="5" class="muted">No players match.</td></tr>';
     };
@@ -293,6 +364,7 @@
         <fieldset><legend>Towers</legend>${checks('unlocked', GD.TOWER_ORDER, u.unlocked, (id) => GD.TOWERS[id].name, GD.DEFAULT_TOWERS)}</fieldset>
         <fieldset><legend>Cosmetics</legend>${checks('owned', Object.keys(GD.SKINS).concat(Object.keys(GD.BANNERS)), u.owned,
           (id) => (GD.SKINS[id] ? 'Skin: ' + GD.SKINS[id].name : 'Banner: ' + GD.BANNERS[id].name), GD.DEFAULT_COSMETICS)}</fieldset>
+        <label class="chk"><input type="checkbox" name="ideasAccess" ${u.ideasAccess || u.admin ? 'checked' : ''} ${u.admin ? 'disabled' : ''}>Can see the Ideas box</label>
         <label class="chk ban"><input type="checkbox" name="banned" ${u.banned ? 'checked' : ''} ${isMe ? 'disabled' : ''}>Banned (can't log in)</label>
         <button class="btn primary" type="submit">Save changes</button>
       </form>
@@ -303,7 +375,7 @@
     f.xp.oninput = () => { f.level.value = GD.levelInfo(Number(f.xp.value) || 0).level; };
     box.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => {
       if (b.dataset.q === 'coins') f.coins.value = Number(f.coins.value) + 1000;
-      if (b.dataset.q === 'all') f.querySelectorAll('input[type=checkbox]:not([name=banned])').forEach((c) => (c.checked = true));
+      if (b.dataset.q === 'all') f.querySelectorAll('input[name=unlocked], input[name=owned]').forEach((c) => (c.checked = true));
       if (b.dataset.q === 'reset') { for (const k of ['wins', 'losses', 'botWins', 'bestRound', 'games']) f[k].value = 0; f.rating.value = 1000; }
     }));
     f.onsubmit = async (e) => {
@@ -313,6 +385,7 @@
       body.unlocked = [...f.querySelectorAll('input[name=unlocked]:checked')].map((c) => c.value);
       body.owned = [...f.querySelectorAll('input[name=owned]:checked')].map((c) => c.value);
       body.banned = f.banned.checked;
+      if (!u.admin) body.ideasAccess = f.ideasAccess.checked;
       try {
         const r = await api('/api/admin/user/' + u.id, body);
         Object.assign(u, r.user);

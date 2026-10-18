@@ -7,6 +7,8 @@ const path = require('path');
 class FileStore {
   constructor(file) {
     this.file = file;
+    this.metaFile = file.replace(/\.json$/, '') + '.meta.json';
+    this.meta = {};
     this.users = new Map();
     this.byName = new Map();
     this.timer = null;
@@ -19,6 +21,7 @@ class FileStore {
         this.byName.set(u.username.toLowerCase(), u.id);
       }
     }
+    if (fs.existsSync(this.metaFile)) this.meta = JSON.parse(fs.readFileSync(this.metaFile, 'utf8'));
     console.log(`[db] file store: ${this.file} (${this.users.size} users)`);
   }
   async getById(id) { return this.users.get(id) || null; }
@@ -54,7 +57,11 @@ class FileStore {
     const tmp = this.file + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify([...this.users.values()]));
     fs.renameSync(tmp, this.file);
+    fs.writeFileSync(this.metaFile + '.tmp', JSON.stringify(this.meta));
+    fs.renameSync(this.metaFile + '.tmp', this.metaFile);
   }
+  async getMeta(key) { return this.meta[key] === undefined ? null : this.meta[key]; }
+  async setMeta(key, value) { this.meta[key] = value; this.scheduleSave(); }
   async close() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } this.flush(); }
 }
 
@@ -71,6 +78,7 @@ class PgStore {
       name_lower TEXT UNIQUE NOT NULL,
       doc JSONB NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT now())`);
+    await this.pool.query('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value JSONB NOT NULL)');
     console.log('[db] postgres store ready');
   }
   remember(doc) { if (doc) this.cache.set(doc.id, doc); return doc; }
@@ -109,6 +117,13 @@ class PgStore {
   async delete(id) {
     this.cache.delete(id);
     await this.pool.query('DELETE FROM users WHERE id=$1', [id]);
+  }
+  async getMeta(key) {
+    const r = await this.pool.query('SELECT value FROM meta WHERE key=$1', [key]);
+    return r.rows[0] ? r.rows[0].value : null;
+  }
+  async setMeta(key, value) {
+    await this.pool.query('INSERT INTO meta (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [key, JSON.stringify(value)]);
   }
   async close() { await this.pool.end(); }
 }

@@ -349,3 +349,29 @@ input {
 .btn.danger { background: transparent; color: var(--red); border-color: var(--red); box-shadow: none; justify-self: start; }
 .btn.danger.armed { background: var(--red); color: #2b0a0a; }
 @media (max-width: 900px) { .admin-grid { grid-template-columns: 1fr; } .ae-nums { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---------- ideas box ---------- */
+.ideas { display: grid; gap: 10px; max-width: 760px; }
+.idea-form { display: flex; gap: 10px; align-items: stretch; }
+.idea-form textarea { flex: 1; font: inherit; color: var(--text); background: var(--ink); border: 3px solid var(--line); border-radius: 10px; padding: 9px 12px; resize: vertical; min-height: 48px; }
+.ideas > p { margin: 0; }
+.idea-filter { justify-self: start; }
+.idea-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.idea { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; background: var(--ink); border-radius: 12px; padding: 10px 12px; }
+.idea.st-done .idea-body p, .idea.st-rejected .idea-body p { color: var(--muted); }
+.idea.st-rejected .idea-body p { text-decoration: line-through; }
+.idea-body p { margin: 0 0 2px; overflow-wrap: anywhere; }
+.idea-body small { color: var(--muted); font-size: 12px; }
+.vote { display: grid; justify-items: center; background: var(--ink-3); border: 2px solid var(--line); border-radius: 10px; padding: 4px 9px; cursor: pointer; min-width: 44px; color: var(--muted); }
+.vote b { color: var(--text); font-size: 15px; }
+.vote.on { border-color: var(--lime); color: var(--lime); }
+.idea-side { display: flex; gap: 6px; align-items: center; }
+.idea-side select { font: inherit; font-size: 13px; color: var(--text); background: var(--ink-3); border: 2px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+.idea-side .status { font-style: normal; font-size: 12px; color: var(--muted); }
+.idea.st-planned .status { color: var(--gold); }
+.idea.st-done .status { color: var(--lime); }
+.idea-side .del { padding: 3px 9px; font-size: 12px; }
+.idea-side .del.armed { color: var(--red); border-color: var(--red); }
+.idea-list .empty { padding: 10px 0; }
+.tag.idea { color: var(--lime); }
+@media (max-width: 560px) { .idea { grid-template-columns: auto 1fr; } .idea-side { grid-column: 2; } .idea-form { flex-direction: column; } }
