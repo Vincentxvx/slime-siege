@@ -97,6 +97,7 @@
     $('profile-stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
     $('daily').hidden = !p.dailyAvailable;
     $('tab-admin').hidden = !p.isAdmin;
+    $('sandbox-block').hidden = !p.powers;
     $('tab-ideas').hidden = !p.ideas;
     $('tab-maps').hidden = !p.mapEditor;
     if ((S.tab === 'admin' && !p.isAdmin) || (S.tab === 'ideas' && !p.ideas) || (S.tab === 'maps' && !p.mapEditor)) {
@@ -530,6 +531,10 @@
     document.querySelectorAll('#bot-diff [data-d]').forEach((x) => x.classList.toggle('on', x === b));
   }));
   $('btn-bot').addEventListener('click', () => S.socket && S.socket.emit('playBot', S.botDiff, pickedMap()));
+  $('sandbox-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (S.socket) S.socket.emit('playSandbox', { cols: Number($('sb-cols').value), rows: Number($('sb-rows').value) });
+  });
   $('room-host').addEventListener('click', (e) => {
     if (!S.socket) return;
     if (e.target.id === 'btn-room') S.socket.emit('createRoom', pickedMap());
@@ -697,6 +702,11 @@
     socket.on('spectateEnd', (r) => window.Game.spectateEnd(r, backToLobby));
     socket.on('spectators', (d) => window.Game.setSpectators(d.count));
     socket.on('matchEnd', (res) => {
+      if (res.mode === 'sandbox') { // leaving the test field: no end screen, nothing to show
+        backToLobby();
+        if (res.reason === 'error') toast('The test field stopped because of a server error', 'bad');
+        return;
+      }
       S.profile = res.profile;
       const mode = window.Game.mode();
       const back = () => { renderProfile(); renderShop(); show('lobby'); };

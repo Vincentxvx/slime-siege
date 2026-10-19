@@ -18,17 +18,22 @@
   const groundCache = {};
   function ground(mapId) {
     if (groundCache[mapId]) return groundCache[mapId];
+    // keep only the current test field's ground (a big one is ~20 MB, and every size is a new map)
+    if (mapId.startsWith('sandbox:')) for (const k in groundCache) if (k.startsWith('sandbox:')) delete groundCache[k];
     const map = GD.MAPS[mapId], th = map.theme;
+    // the test field can be any size; every other map is COLS × ROWS
+    const cols = map.cols || GD.COLS, rows = map.rows || GD.ROWS, W = cols * T, H = rows * T;
     const c = document.createElement('canvas');
     c.width = W * 2; c.height = H * 2;
     const g = c.getContext('2d');
     g.scale(2, 2);
-    for (let x = 0; x < GD.COLS; x++) for (let y = 0; y < GD.ROWS; y++) {
+    for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) {
       g.fillStyle = th.ground[(x + y) % 2];
       g.fillRect(x * T, y * T, T, T);
     }
     const rand = rng(mapId.length * 977);
-    for (let i = 0; i < 90; i++) {
+    const decos = Math.round((90 * cols * rows) / (GD.COLS * GD.ROWS)); // same density on any size
+    for (let i = 0; i < decos; i++) {
       const x = rand() * W, y = rand() * H;
       const key = Math.floor(x / T) + ',' + Math.floor(y / T);
       if (map.pathTiles.has(key)) continue;
@@ -55,8 +60,9 @@
         g.beginPath(); g.ellipse(x, y, 3 + rand() * 4, 2 + rand() * 2.5, rand() * 3, 0, 7); g.fill();
       }
     }
-    // path as a thick rounded polyline
+    // path as a thick rounded polyline (the test field has none)
     const pts = map.path.map(([cx, cy]) => [(cx + 0.5) * T, (cy + 0.5) * T]);
+    if (pts.length < 2) { groundCache[mapId] = c; return c; }
     const stroke = (color, width) => {
       g.strokeStyle = color; g.lineWidth = width; g.lineJoin = 'round'; g.lineCap = 'round';
       g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();

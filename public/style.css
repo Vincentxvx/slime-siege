@@ -543,3 +543,42 @@ input {
 .pick-foot #pick-opp.ready { color: var(--lime); }
 @media (max-width: 1000px) { .pick-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 760px) { .pick-grid { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- test field (admins and players with powers) ---------- */
+/* the field (any size, centered) | the slime palette; under it 16 small tower cards | the tower panel | the tools */
+#sandbox-tools { display: none; }
+.sandbox .send-bulk, .sandbox .opp-view, .sandbox #next-wave, .sandbox .hud-side.right, .sandbox #btn-chat, .sandbox .sends h3 small { display: none; }
+.sandbox #sandbox-tools { grid-area: bulk; display: grid; grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 6px; height: 100%; font-size: 12px; }
+#sandbox-tools label { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-weight: 600; font-size: 12px; }
+#sandbox-tools input[type=number] { width: 54px; margin: 0; padding: 2px 5px; font-size: 13px; }
+#sandbox-tools button { background: var(--ink); border: 2px solid var(--line); border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--text); }
+#sandbox-tools button:hover { background: var(--ink-3); }
+.slime-pick .sname { font-size: 12px; }
+.slime-pick .shp { font-size: 11px; color: var(--muted); }
+.send.slime-pick.active { border-color: var(--lime); background: var(--ink); }
+.tower-panel .dps { color: var(--muted); margin-top: 2px; }
+.tower-panel .dps b { color: var(--lime); }
+.sb-size { align-items: end; flex-wrap: wrap; }
+.sb-size label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.sb-size input { width: 4.5em; margin: 0; letter-spacing: 0; text-transform: none; }
+@media (min-width: 981px) {
+  /* the bottom row is 20px taller here for the damage counter, so the field gets 100vh - 278px */
+  /* the top row is at least 320px (if the screen has it), so the slime palette stays usable next to a wide, short field */
+  .sandbox .arena { --bottom: 160px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--sendw); grid-template-areas: "main main sends" "bar panel bulk";
+    grid-template-rows: minmax(min(320px, calc(100vh - 278px)), auto) var(--bottom); }
+  .sandbox .main-wrap { align-self: center; }
+  .sandbox #screen-game { max-width: 2400px; }
+  .sandbox .main-wrap { justify-self: center; width: min(100%, calc((100vh - 278px) * var(--cols) / var(--rows))); }
+  .sandbox .send-grid { grid-template-rows: repeat(7, minmax(0, 1fr)); }
+  .sandbox .tower-bar { grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .sandbox .tcard { padding: 3px 2px; }
+  .sandbox .tcard canvas { width: 30px !important; height: 30px !important; }
+  .sandbox .tcard .tcost { display: none; }
+  .sandbox .tname { font-size: 10px; line-height: 1.15; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sandbox .tcard kbd { font-size: 10px; top: 2px; left: 4px; }
+}
+.sandbox #cv-main { aspect-ratio: var(--cols) / var(--rows); }
+@media (max-width: 980px) {
+  .sandbox .arena { grid-template-areas: "main" "bar" "panel" "sends" "bulk"; }
+  .sandbox #sandbox-tools { height: auto; grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

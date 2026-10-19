@@ -4,6 +4,7 @@ const GD = require('../../shared/data');
 const { Bot } = require('./bot');
 
 const R = GD.RULES;
+const SANDBOX_GOLD = 1e6; // the test field's gold is topped up to this every tick
 const DT = 1 / R.tickRate;
 const EI = Object.fromEntries(GD.ENEMY_ORDER.map((k, i) => [k, i]));
 const TI = Object.fromEntries(GD.TOWER_ORDER.map((k, i) => [k, i]));
@@ -14,16 +15,24 @@ let nextMatchId = 1;
 
 class Match {
   /**
-   * players: [{ uid?, name, level, unlocked:[], skin, banner, isBot?, difficulty? }] x2
+   * players: [{ uid?, name, level, unlocked:[], skin, banner, isBot?, difficulty?, idle? }] x2
    * onSnapshot(idx, snap), onEnd({ winner: idx|-1, reason })
+   * sandbox: { cols, rows } makes a test field: player 0 alone (player 1 is an idle placeholder),
+   *   no rounds, endless gold, every tower, slimes placed by hand that stand still
    */
-  constructor({ players, mapId, mode, onSnapshot, onEnd }) {
+  constructor({ players, mapId, mode, onSnapshot, onEnd, sandbox }) {
     this.id = 'm' + nextMatchId++;
     this.mode = mode;
-    this.mapId = mapId || (GD.MAPS[process.env.FORCE_MAP] ? process.env.FORCE_MAP : pick(Object.keys(GD.MAPS)));
-    this.map = GD.MAPS[this.mapId];
-    // a custom map can be deleted between choosing it and the match starting: play a built-in map instead
-    if (!Object.hasOwn(GD.MAPS, this.mapId)) { this.mapId = pick(GD.BUILTIN_MAPS); this.map = GD.MAPS[this.mapId]; }
+    if (sandbox) {
+      this.map = GD.sandboxMap(sandbox.cols, sandbox.rows);
+      this.mapId = this.map.id;
+      this.sandbox = { respawn: true, respawns: [] }; // dead placed slimes come back after a second
+    } else {
+      this.mapId = mapId || (GD.MAPS[process.env.FORCE_MAP] ? process.env.FORCE_MAP : pick(Object.keys(GD.MAPS)));
+      this.map = GD.MAPS[this.mapId];
+      // a custom map can be deleted between choosing it and the match starting: play a built-in map instead
+      if (!Object.hasOwn(GD.MAPS, this.mapId)) { this.mapId = pick(GD.BUILTIN_MAPS); this.map = GD.MAPS[this.mapId]; }
+    }
     this.players = players;
     this.onSnapshot = onSnapshot || (() => {});
     this.onEnd = onEnd || (() => {});
@@ -36,8 +45,9 @@ class Match {
       p.allTowers = p.unlocked.slice();
       p.loadout = [];
       p.ready = false;
-      if (p.isBot) { p.loadout = botLoadout(p.difficulty).filter((t) => p.allTowers.includes(t)); p.ready = true; }
-      else if (p.allTowers.length <= R.loadoutSize) { p.loadout = p.allTowers.slice(); p.ready = true; }
+      if (p.idle) { p.ready = true; }
+      else if (p.isBot) { p.loadout = botLoadout(p.difficulty).filter((t) => p.allTowers.includes(t)); p.ready = true; }
+      else if (sandbox || p.allTowers.length <= R.loadoutSize) { p.loadout = p.allTowers.slice(); p.ready = true; }
     }
     this.round = 0;
     this.nextRoundAt = R.prepTime;
@@ -49,8 +59,14 @@ class Match {
       connected: !!p.isBot, disconnectedAt: p.isBot ? null : 0,
       stats: { kills: 0, leaked: 0, sentGold: 0, towersBuilt: 0 },
     }));
-    this.bots = players.map((p, i) => (p.isBot ? new Bot(this, i, p.difficulty) : null));
+    this.bots = players.map((p, i) => (p.isBot && !p.idle ? new Bot(this, i, p.difficulty) : null));
     this.result = null;
+    if (sandbox) { // straight into play: no picking, no countdown; the round only sets slime strength
+      for (const p of players) p.unlocked = p.loadout.slice();
+      this.state = 'running';
+      this.time = 0;
+      this.round = 1;
+    }
   }
 
   opp(idx) { return this.boards[1 - idx]; }
@@ -58,6 +74,7 @@ class Match {
   // ---------------- main loop ----------------
   tick() {
     if (this.state === 'ended') return;
+    if (this.sandbox) return this.sandboxTick();
     this.ticks++;
     if (this.state === 'picking') {
       this.pickLeft -= DT;
@@ -88,6 +105,72 @@ class Match {
       this.checkDisconnects();
     }
     if (this.ticks % R.snapEvery === 0 || this.state === 'ended') this.emitSnapshots();
+  }
+
+  // Test field: towers fire at the standing slimes; gold never runs out; placed slimes respawn
+  sandboxTick() {
+    this.ticks++;
+    this.time += DT;
+    const b = this.boards[0], sb = this.sandbox;
+    b.gold = SANDBOX_GOLD;
+    this.updateBoard(b);
+    if (sb.respawns.some((r) => r.t <= this.time)) {
+      const due = sb.respawns.filter((r) => r.t <= this.time);
+      sb.respawns = sb.respawns.filter((r) => r.t > this.time);
+      for (const r of due) {
+        // not if a tower or another slime took the tile meanwhile
+        if (b.occupied.has(r.tile) || b.enemies.some((e) => e.tile === r.tile)) continue;
+        // a slime that split comes back only once its children are gone, so the field can't fill up
+        if (b.enemies.some((e) => e.origin === r.tile)) { sb.respawns.push(Object.assign({}, r, { t: this.time + 0.25 })); continue; }
+        this.spawnStill(b, r.type, r.x, r.y, r.tile);
+      }
+    }
+    this.checkDisconnects();
+    if (this.ticks % R.snapEvery === 0 || this.state === 'ended') this.emitSnapshots();
+  }
+
+  // a slime that stands still at x, y (tile: set for slimes placed by hand, which can respawn;
+  // origin: the placed slime a split child came from). d = x, so First aims right and Last left, as on a map.
+  spawnStill(b, type, x, y, tile, origin) {
+    const hpMul = GD.hpMulForRound(this.round);
+    const hp = Math.max(1, Math.round(GD.ENEMIES[type].hp * hpMul));
+    const e = { id: b.nextId++, type, d: x + y * 0.001, hp, maxHp: hp, hpMul, sent: false, own: false, spd: 1, slowUntil: 0, slowAmt: 0, rootUntil: 0, rootImmune: 0, lit: 0, x, y, dead: false, still: true, tile: tile || null, origin: origin || null };
+    b.enemies.push(e);
+    return e;
+  }
+
+  // place a standing slime on a tile, or remove the one placed there
+  placeSlime(b, type, col, row) {
+    if (!Object.hasOwn(GD.ENEMIES, type)) return { ok: false, error: 'Unknown slime' }; // own keys only
+    if (col < 0 || col >= this.map.cols || row < 0 || row >= this.map.rows) return { ok: false, error: 'Out of bounds' };
+    const tile = col + ',' + row;
+    const sb = this.sandbox;
+    const there = b.enemies.find((e) => e.tile === tile && !e.dead);
+    if (there || sb.respawns.some((r) => r.tile === tile)) {
+      if (there) b.enemies.splice(b.enemies.indexOf(there), 1);
+      sb.respawns = sb.respawns.filter((r) => r.tile !== tile);
+      return { ok: true, removed: true };
+    }
+    if (b.occupied.has(tile)) return { ok: false, error: 'A tower is on that tile' };
+    if (b.enemies.length + sb.respawns.length >= GD.SANDBOX.maxSlimes) return { ok: false, error: `At most ${GD.SANDBOX.maxSlimes} slimes` };
+    this.spawnStill(b, type, col + 0.5, row + 0.5, tile);
+    return { ok: true };
+  }
+
+  // test field options: respawn on/off, slime strength (as in round N), clear slimes, reset damage counters
+  sandboxAction(b, a) {
+    const sb = this.sandbox;
+    if (typeof a.respawn === 'boolean') { sb.respawn = a.respawn; if (!a.respawn) sb.respawns = []; }
+    if (a.round !== undefined) {
+      this.round = Math.max(1, Math.min(GD.SANDBOX.maxRound, Math.floor(Number(a.round) || 1)));
+      for (const e of b.enemies) { // standing slimes take the new strength at full health
+        e.hpMul = GD.hpMulForRound(this.round);
+        e.maxHp = e.hp = Math.max(1, Math.round(GD.ENEMIES[e.type].hp * e.hpMul));
+      }
+    }
+    if (a.clear) { b.enemies = []; b.pending = []; sb.respawns = []; }
+    if (a.resetDamage) for (const t of b.towers) { t.dealt = 0; t.since = this.time; }
+    return { ok: true };
   }
 
   finishPicking() {
@@ -160,6 +243,7 @@ class Match {
     const len = this.map.length;
     for (let i = b.enemies.length - 1; i >= 0; i--) {
       const e = b.enemies[i];
+      if (e.still) continue; // test field slimes stand where they were placed
       const E = GD.ENEMIES[e.type];
       let sp = E.speed * e.spd;
       if (e.slowUntil > this.time) sp *= 1 - e.slowAmt;
@@ -180,15 +264,20 @@ class Match {
       const rr = t.stats.range * t.stats.range;
       for (const e of b.enemies) if (dist2(e, t) <= rr) e.lit = this.ticks;
     }
-    for (const t of b.towers) this.updateTower(b, t);
+    // curTower: whose shot is landing, for the test field's damage counters
+    for (const t of b.towers) { this.curTower = t; this.updateTower(b, t); }
+    this.curTower = null;
     if (b.enemies.some((e) => e.dead)) b.enemies = b.enemies.filter((e) => !e.dead);
-    for (const s of b.pending) this.spawnEnemy(b, s.type, Math.max(0, s.d), s.hpMul, s.sent, s.spd, s.own);
+    for (const s of b.pending) {
+      if (s.still) this.spawnStill(b, s.type, s.x, s.y, null, s.origin);
+      else this.spawnEnemy(b, s.type, Math.max(0, s.d), s.hpMul, s.sent, s.spd, s.own);
+    }
     b.pending.length = 0;
   }
 
   // can a tower with these stats target this slime? (ghosts need detection or a Glow Lantern's light)
   visible(e, s) { return !GD.ENEMIES[e.type].ghost || !!s.detect || e.lit === this.ticks; }
-  onBoard(e) { return e.x >= 0 && e.x <= GD.COLS && e.y >= 0 && e.y <= GD.ROWS; }
+  onBoard(e) { return e.x >= 0 && e.x <= this.map.cols && e.y >= 0 && e.y <= this.map.rows; }
 
   candidates(b, t, range) {
     const out = [];
@@ -369,13 +458,19 @@ class Match {
     const E = GD.ENEMIES[e.type];
     const d = pierce ? dmg : dmg - (E.armor || 0);
     if (d <= 0) return;
+    if (this.sandbox && this.curTower) this.curTower.dealt = (this.curTower.dealt || 0) + Math.min(d, e.hp); // no overkill
     e.hp -= d;
     e.hit = true; // took real damage since the last snapshot (the client flashes it)
     if (e.hp <= 0) {
       e.dead = true;
       if (!e.sent) b.gold += E.bounty; // sent slimes pay no bounty, so sending is never a gift
       b.stats.kills++;
-      if (!petrify) (E.children || []).forEach((type, i) => b.pending.push({ type, d: e.d - 0.15 * i, hpMul: e.hpMul, sent: e.sent, spd: e.spd, own: e.own }));
+      const kids = petrify ? [] : E.children || [];
+      if (e.still) { // test field: children stand around their parent; a placed slime comes back after a second
+        const room = b.enemies.length + b.pending.length < 2 * GD.SANDBOX.maxSlimes; // hard ceiling
+        if (room) kids.forEach((type, i) => b.pending.push({ type, still: true, x: e.x + (i - (kids.length - 1) / 2) * 0.3, y: e.y + 0.1, origin: e.tile || e.origin }));
+        if (e.tile && this.sandbox.respawn) this.sandbox.respawns.push({ t: this.time + 1, type: e.type, x: e.x, y: e.y, tile: e.tile });
+      } else kids.forEach((type, i) => b.pending.push({ type, d: e.d - 0.15 * i, hpMul: e.hpMul, sent: e.sent, spd: e.spd, own: e.own }));
     }
   }
 
@@ -388,6 +483,12 @@ class Match {
     }
     if (a.type === 'loadout') return { ok: false, error: 'Towers are already chosen' };
     const b = this.boards[idx];
+    if (this.sandbox) {
+      if (idx !== 0) return { ok: false, error: 'Not your test field' };
+      if (a.type === 'slime') return this.placeSlime(b, String(a.enemy), a.col | 0, a.row | 0);
+      if (a.type === 'sandbox') return this.sandboxAction(b, a);
+      if (a.type === 'send' || a.type === 'power') return { ok: false, error: 'Not in the test field' };
+    } else if (a.type === 'slime' || a.type === 'sandbox') return { ok: false, error: 'Only in the test field' };
     switch (a.type) {
       case 'place': return this.place(idx, b, String(a.tower), a.col | 0, a.row | 0);
       case 'upgrade': return this.upgrade(b, a.id | 0);
@@ -403,15 +504,18 @@ class Match {
     const T = GD.TOWERS[type];
     if (!T) return { ok: false, error: 'Unknown tower' };
     if (!this.players[idx].unlocked.includes(type)) return { ok: false, error: 'Tower not unlocked' };
-    if (col < 0 || col >= GD.COLS || row < 0 || row >= GD.ROWS) return { ok: false, error: 'Out of bounds' };
+    if (col < 0 || col >= this.map.cols || row < 0 || row >= this.map.rows) return { ok: false, error: 'Out of bounds' };
     const key = col + ',' + row;
     if (this.map.pathTiles.has(key)) return { ok: false, error: "Can't build on the path" };
     if (b.occupied.has(key)) return { ok: false, error: 'Tile taken' };
+    if (this.sandbox && b.enemies.some((e) => e.tile === key)) return { ok: false, error: 'A slime is on that tile' };
     if (b.towers.length >= R.maxTowers) return { ok: false, error: 'Tower limit reached' };
     if (T.limit && b.towers.filter((x) => x.type === type).length >= T.limit) return { ok: false, error: T.limit === 1 ? `Only 1 ${T.name} allowed` : `Max ${T.limit} ${T.name}s` };
     if (b.gold < T.cost) return { ok: false, error: 'Not enough gold' };
     b.gold -= T.cost;
-    const t = { id: b.nextId++, type, col, row, x: col + 0.5, y: row + 0.5, level: 0, cd: 0, target: T.defaultTarget || 'first', born: this.round, stats: GD.towerStats(type, 0) };
+    // dealt/since: damage counter for the test field. There an Elder Sapling grows as if planted at the
+    // start (born 0), so its growth follows the round setting whether that was set before or after building.
+    const t = { id: b.nextId++, type, col, row, x: col + 0.5, y: row + 0.5, level: 0, cd: 0, target: T.defaultTarget || 'first', born: this.sandbox ? 0 : this.round, stats: GD.towerStats(type, 0), dealt: 0, since: this.time };
     b.towers.push(t);
     b.occupied.add(key);
     b.stats.towersBuilt++;
@@ -495,7 +599,7 @@ class Match {
       case 'income': b.income = n(b.income + n(a.amount, -1e5, 1e5), 0, 1e6); break;
       case 'spawn': {
         const type = String(a.enemy);
-        if (!GD.ENEMIES[type]) return { ok: false, error: 'Unknown slime' };
+        if (!Object.hasOwn(GD.ENEMIES, type)) return { ok: false, error: 'Unknown slime' }; // own keys only
         const count = n(a.count, 1, 300);
         const target = a.target === 'self' ? b : o;
         const hpMul = GD.hpMulForRound(Math.max(1, this.round));
@@ -576,10 +680,20 @@ class Match {
       mine: mineGold,
       cds: GD.SENDS.map((p) => r2(Math.max(0, (b.sendReady[p.id] || 0) - this.time))),
       // 7th tower field: Storm Jar stored charges, Elder Sapling growth before its cap (the client caps it per level)
-      towers: b.towers.map((t) => [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target],
-        t.stats.kind === 'jar' ? Math.floor(t.charge || 0) : t.stats.growCap ? Math.floor(Math.max(0, this.round - t.born) / t.stats.growEvery) : 0]),
+      // test field towers add [damage dealt, seconds counted] for their damage per second
+      towers: b.towers.map((t) => {
+        const tw = [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target],
+          t.stats.kind === 'jar' ? Math.floor(t.charge || 0) : t.stats.growCap ? Math.floor(Math.max(0, this.round - t.born) / t.stats.growEvery) : 0];
+        if (this.sandbox) tw.push(Math.round(t.dealt), r2(this.time - t.since));
+        return tw;
+      }),
       // 5th slime field: 1 slowed by Frost, 2 rooted by a Bramble Snare; 6th: sent by a player (headband)
-      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.rootUntil > this.time ? 2 : e.slowUntil > this.time ? 1 : 0, e.sent && !e.own ? 1 : 0, e.hit ? 1 : 0]),
+      // standing test field slimes add [x*100, y*100, hp] (they have no place on a path)
+      enemies: b.enemies.map((e) => {
+        const en = [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.rootUntil > this.time ? 2 : e.slowUntil > this.time ? 1 : 0, e.sent && !e.own ? 1 : 0, e.hit ? 1 : 0];
+        if (e.still) en.push(Math.round(e.x * 100), Math.round(e.y * 100), Math.max(0, Math.ceil(e.hp)));
+        return en;
+      }),
       ev: b.events,
     };
   }
@@ -594,6 +708,7 @@ class Match {
     };
     if (this.state === 'picking') base.pickLeft = r2(Math.max(0, this.pickLeft));
     else base.loadouts = this.players.map((p) => p.loadout);
+    if (this.sandbox) base.sandbox = { respawn: this.sandbox.respawn };
     for (let i = 0; i < 2; i++) {
       if (this.players[i].isBot) continue;
       const own = boards[i], other = Object.assign({}, boards[1 - i], { gold: null, cds: null });

@@ -1,7 +1,8 @@
 // In-match client: renders server snapshots, handles placing/upgrading/sending.
 (function () {
   const GD = window.GD, R = window.Render;
-  const T = R.T, W = R.W, H = R.H;
+  const T = R.T;
+  let W = R.W, H = R.H; // board size in pixels: COLS × ROWS tiles, except on a test field (set in start)
   const $ = (id) => document.getElementById(id);
   const now = () => performance.now() / 1000;
 
@@ -20,9 +21,17 @@
   function start(info, net) {
     Object.assign(G, {
       active: true, info, net, you: info.you, prev: null, cur: null, effects: [], aim: [{}, {}], hits: [new Map(), new Map()], anim: [new Map(), new Map()], cdFull: {}, cdLast: {},
-      placing: null, hover: null, selected: null, panelKey: '', lastRound: -1, ended: false, previewRound: -1,
+      placing: null, hover: null, selected: null, panelKey: '', lastRound: -1, ended: false, previewRound: -1, cursor: null, kb: false,
     });
     G.map = GD.MAPS[info.map];
+    // test field: any board size, a slime palette instead of sends, tools instead of quick sends
+    G.sandbox = !!info.sandbox;
+    G.placingSlime = null;
+    G.cols = G.map.cols || GD.COLS; G.rows = G.map.rows || GD.ROWS;
+    W = G.cols * T; H = G.rows * T;
+    document.body.classList.toggle('sandbox', G.sandbox);
+    $('screen-game').style.setProperty('--cols', G.cols);
+    $('screen-game').style.setProperty('--rows', G.rows);
     G.picking = false; G.pickSel = null; G.pickSent = '';
     $('pick-overlay').hidden = true;
     G.spectator = !!info.spectator;
@@ -35,12 +44,15 @@
     plate($('hud-op-plate'), G.op);
     $('end-overlay').hidden = true;
     $('countdown').hidden = false;
-    $('btn-forfeit').textContent = 'Forfeit';
+    $('btn-forfeit').textContent = G.sandbox ? 'Leave' : 'Forfeit';
     $('btn-forfeit').classList.remove('armed');
+    $('hud-lives').parentElement.hidden = G.sandbox; // nothing can leak on a test field
+    $('hud-income').closest('.stat').hidden = G.sandbox;
     buildTowerBar();
     buildSends();
     renderPanel(true);
     buildEmotes();
+    $('emote-row').hidden = true; $('btn-chat').setAttribute('aria-expanded', 'false'); // not left open from the last match
     buildPowers();
     $('bubble-me').hidden = true; $('bubble-op').hidden = true;
     G.oppLoadout = null; $('opp-loadout').hidden = true; $('opp-loadout').innerHTML = '';
@@ -106,8 +118,12 @@
 
   function sizeCanvases() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    for (const [id, k] of [['cv-main', 1], ['cv-opp', 1]]) { // both lanes are shown at the same size
+    for (const id of ['cv-main', 'cv-opp']) {
       const c = $(id);
+      // both lanes are drawn at the board's own size; a test field follows its size on screen (a small field
+      // shown big stays sharp), but at most ~2400px across
+      const fit = G.sandbox ? Math.max(1, c.clientWidth / W) : 1;
+      const k = Math.min(fit, 2400 / (Math.max(W, H) * dpr));
       c.width = Math.round(W * k * dpr); c.height = Math.round(H * k * dpr);
     }
   }
@@ -204,7 +220,7 @@
     box.setAttribute('aria-label', `Towers ${G.op.name} brought`);
     // sit in the corner whose ~6×2 tiles have the least path under them (Canyon starts bottom-left)
     let least = Infinity;
-    for (const [corner, c0, r0] of [['bl', 0, GD.ROWS - 2], ['tl', 0, 0], ['br', GD.COLS - 6, GD.ROWS - 2]]) {
+    for (const [corner, c0, r0] of [['bl', 0, G.rows - 2], ['tl', 0, 0], ['br', G.cols - 6, G.rows - 2]]) {
       let n = 0;
       for (let c = c0; c < c0 + 6; c++) for (let r = r0; r < r0 + 2; r++) if (G.map.pathTiles.has(c + ',' + r)) n++;
       if (n < least) { least = n; box.dataset.corner = corner; }
@@ -235,7 +251,8 @@
     let key = 1;
     // Only the towers brought into this match (your loadout), in the order you picked them. Until the pick
     // ends, unlocked still lists every tower you own, so cap it at the loadout size (the bar has 4 slots).
-    G.me.unlocked.filter((t) => GD.TOWERS[t]).slice(0, GD.RULES.loadoutSize).forEach((type) => {
+    // (a test field brings every tower: 16 small cards in two rows)
+    G.me.unlocked.filter((t) => GD.TOWERS[t]).slice(0, G.sandbox ? Infinity : GD.RULES.loadoutSize).forEach((type) => {
       const T0 = GD.TOWERS[type];
       const unlocked = true;
       const b = document.createElement('button');
@@ -247,7 +264,9 @@
       const cost = document.createElement('span'); cost.className = 'tcost'; cost.textContent = unlocked ? T0.cost : 'Locked';
       b.append(name, cost);
       if (unlocked) {
-        const k = document.createElement('kbd'); k.textContent = key; b.dataset.key = key++; b.append(k);
+        // keys 1-9 (a test field has 16 cards; the rest are picked with the mouse)
+        if (key <= 9) { const k = document.createElement('kbd'); k.textContent = key; b.dataset.key = key; b.append(k); }
+        key++;
         b.onclick = () => setPlacing(G.placing === type ? null : type);
       } else b.disabled = true;
       bar.append(b);
@@ -257,6 +276,8 @@
   function buildSends() {
     const grid = $('send-grid');
     grid.innerHTML = '';
+    $('sends-title').textContent = G.sandbox ? 'Place slimes' : 'Send slimes';
+    if (G.sandbox) return buildSlimePalette(grid);
     GD.SENDS.forEach((p, i) => {
       const b = document.createElement('button');
       b.className = 'send';
@@ -275,6 +296,36 @@
       if (key) b.title += ` (key ${key})`;
       grid.append(b);
     });
+  }
+
+  // Test field: one button per slime type (same keys as the sends); pick one, then click tiles
+  function buildSlimePalette(grid) {
+    GD.ENEMY_ORDER.forEach((type, i) => {
+      const E = GD.ENEMIES[type];
+      const b = document.createElement('button');
+      b.className = 'send slime-pick';
+      b.dataset.slime = type;
+      const key = SEND_KEYS[i] ? SEND_KEYS[i].toUpperCase() : '';
+      const notes = [E.armor ? `armor ${E.armor}` : '', E.ghost ? 'needs ghost sight' : '', E.children ? 'splits' : ''].filter(Boolean);
+      b.title = `${E.name}${notes.length ? ': ' + notes.join(', ') : ''}${key ? ` (key ${key})` : ''}`;
+      b.append(R.slimeIcon(type, 24));
+      const info = document.createElement('span');
+      info.className = 'sinfo';
+      info.innerHTML = `<span class="r"><b class="sname">${E.name.replace(' Slime', '')}</b><kbd>${key}</kbd></span><span class="r"><span class="shp" data-hp="${type}"></span></span>`;
+      b.append(info);
+      b.onclick = () => setSlime(G.placingSlime === type ? null : type);
+      grid.append(b);
+    });
+  }
+
+  // HP of a standing test slime at the chosen round (the server uses the same formula)
+  const slimeHp = (type, round) => Math.max(1, Math.round(GD.ENEMIES[type].hp * GD.hpMulForRound(round)));
+
+  function setSlime(type) {
+    G.placingSlime = type;
+    if (type) { G.placing = null; G.selected = null; }
+    renderPanel(true);
+    if (G.cur) updateHud();
   }
 
   const SEND_KEYS = ['q', 'w', 'e', 'a', 's', 'd', 'z', 'x', 'c'];
@@ -312,7 +363,8 @@
     if (G.spectator) return;
     G.net.action(a).then((res) => {
       if (!res.ok) { toast(res.error, 'bad'); window.Sfx.play('error'); return; }
-      window.Sfx.play(a.type === 'target' || a.type === 'power' ? 'emote' : a.type);
+      const sound = { target: 'emote', power: 'emote', sandbox: 'emote', slime: res.removed ? 'sell' : 'pop' }[a.type];
+      window.Sfx.play(sound || a.type);
       if (a.type === 'power' && a.power === 'maxTower') renderPanel(true);
       if (a.type === 'place' && res.id) {
         if (!G.shift) { G.selected = res.id; setPlacing(null); }
@@ -431,13 +483,22 @@
     }
   }
 
+  // Where a slime is: standing test field slimes send x, y (e[7], e[8]); the rest are a distance along the path,
+  // eased from the previous snapshot (pe) by a. Returns null for a slime that reached the exit.
+  function slimePos(e, pe, a) {
+    if (e.length > 7) return { x: e[7] / 100, y: e[8] / 100, dx: 0, dy: 1 };
+    let d = e[2] / 100;
+    if (pe) d = pe[2] / 100 + (d - pe[2] / 100) * a;
+    if (!pe && d > G.map.length - 0.6) return null;
+    return GD.posAt(G.map, d);
+  }
+
   function deaths(bi, prevB, curB) {
     const t = now();
     for (const e of prevB.enemies) {
       if (curB.emap.has(e[0])) continue;
-      const d = e[2] / 100;
-      if (d > G.map.length - 0.6) continue; // leaked, not killed
-      const p = GD.posAt(G.map, d);
+      const p = slimePos(e);
+      if (!p) continue; // leaked, not killed
       const type = GD.ENEMY_ORDER[e[1]];
       if (bi === G.you) window.Sfx.play('pop');
       G.effects.push({ b: bi, k: 'splat', x1: p.x * T, y1: p.y * T, color: GD.ENEMIES[type].color, r: GD.ENEMIES[type].r * T, t0: t, dur: 0.35, seed: e[0] });
@@ -482,8 +543,25 @@
   }
 
   // ---------- HUD & panels ----------
+  // Test field HUD: the round only sets how tough new slimes are; gold never runs out
+  function updateSandboxHud(s) {
+    $('hud-round').textContent = s.round;
+    $('hud-next').textContent = `Test field ${G.cols} × ${G.rows}`;
+    $('hud-gold').textContent = '∞';
+    $('countdown').hidden = true;
+    document.querySelectorAll('#tower-bar .tcard').forEach((b) => b.classList.toggle('active', G.placing === b.dataset.type));
+    document.querySelectorAll('#send-grid .slime-pick').forEach((b) => {
+      b.classList.toggle('active', G.placingSlime === b.dataset.slime);
+      const hp = b.querySelector('.shp'), v = slimeHp(b.dataset.slime, s.round) + ' HP';
+      if (hp.textContent !== v) hp.textContent = v;
+    });
+    if (s.sandbox) $('sb-respawn').checked = s.sandbox.respawn;
+    if (document.activeElement !== $('sb-round')) $('sb-round').value = s.round;
+  }
+
   function updateHud() {
     const s = G.cur, me = s.boards[G.you], op = s.boards[1 - G.you];
+    if (G.sandbox) return updateSandboxHud(s);
     $('hud-lives').textContent = me.lives;
     $('hud-gold').textContent = me.gold;
     $('hud-income').textContent = me.income + me.mine;
@@ -605,11 +683,18 @@
     // an Elder Sapling's growth (tw[6]) changes its damage, so it rebuilds the panel too
     // Goldspitter: its gold per shot rises every 8 rounds, so the round is part of the key too
     const round = G.cur ? G.cur.round : 0;
-    const key = G.placing ? `p:${G.placing}:${GD.TOWERS[G.placing].base.shotCost ? round : ''}`
+    const key = G.placingSlime ? `sl:${G.placingSlime}:${round}`
+      : G.placing ? `p:${G.placing}:${GD.TOWERS[G.placing].base.shotCost ? round : ''}`
       : tw ? `t:${tw[0]}:${tw[4]}:${tw[5]}:${GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.growCap ? tw[6] : ''}:${GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.shotCost ? round : ''}` : 'none';
     if (key !== G.panelKey || force) {
       G.panelKey = key;
-      if (G.placing) {
+      if (G.placingSlime) { // test field: placing a slime
+        const E = GD.ENEMIES[G.placingSlime];
+        const facts = [`<b>${slimeHp(G.placingSlime, round)}</b> HP`, E.armor ? `armor <b>${E.armor}</b>` : '', E.ghost ? 'only towers that see ghosts (or a lantern) can hit it' : '',
+          E.children ? `splits into ${E.children.map((c) => GD.ENEMIES[c].name).join(', ')}` : ''].filter(Boolean);
+        panel.innerHTML = `<div class="tp-main"><h3>${E.name}</h3><p class="muted">${facts.join(' · ')} (as in round ${round})</p></div>
+          <div class="tp-side"><p class="hint">Click tiles to place it. Click one again to remove it. <kbd>Esc</kbd> stops.</p></div>`;
+      } else if (G.placing) {
         const T0 = GD.TOWERS[G.placing];
         // the panel has two columns: what it is | its stats (see .tower-panel in style.css)
         panel.innerHTML = `<div class="tp-main"><h3>${T0.name}</h3><p class="muted desc" title="${T0.desc}">${T0.desc}</p>
@@ -633,7 +718,7 @@
         if (cur.growCap) { cur.dmg += Math.min(cur.growCap, tw[6] || 0); if (nx) nx.dmg += Math.min(nx.growCap, tw[6] || 0); }
         const sell = G.spectator ? '' : `<button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button>`;
         panel.innerHTML = `<div class="tp-main"><div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span>${sell}</div>
-          ${upHtml}${modes}</div><div class="tp-side">${statChips(cur, nx)}</div>`;
+          ${upHtml}${modes}</div><div class="tp-side">${statChips(cur, nx)}${G.sandbox ? '<p class="dps" title="Counted since the tower was built or the counters were reset"></p>' : ''}</div>`;
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
@@ -642,6 +727,9 @@
       } else if (G.spectator) {
         panel.innerHTML = `<div class="tp-main"><h3>Watching ${esc(G.info.watching)}</h3><p class="muted">The first lane is ${esc(G.info.watching)}'s, the other one their opponent's.</p></div>
           <div class="tp-side"><p class="muted">Click a tower in ${esc(G.info.watching)}'s lane to see its stats.</p></div>`;
+      } else if (G.sandbox) {
+        panel.innerHTML = `<div class="tp-main"><h3>Test field</h3><p class="muted">Pick a tower (keys 1–9) or a slime (Q W E A S D Z), then click tiles. Slimes stand still.</p></div>
+          <div class="tp-side"><p class="muted">Click a slime again to remove it. Select a tower to see how much damage it deals.</p></div>`;
       } else {
         panel.innerHTML = `<div class="tp-main"><h3>Defend your lane</h3><p class="muted">Pick a tower (keys 1–${G.me.unlocked.length}) and click a free tile.
           Click a placed tower to upgrade or sell it.</p></div>
@@ -658,11 +746,17 @@
       const label = u ? (short > 0 ? `Need <b>${short}</b> more` : `Upgrade <b>${u.cost}</b>`) : '';
       if (up.dataset.label !== label) { up.dataset.label = label; up.innerHTML = label; }
     }
+    // test field: the selected tower's damage counter (tw[7] damage over tw[8] seconds)
+    const dps = panel.querySelector('.dps');
+    if (dps && tw && tw.length > 8) {
+      const v = `Damage <b>${tw[7]}</b> · <b>${(tw[7] / Math.max(1, tw[8])).toFixed(1)}</b> per second`;
+      if (dps.dataset.v !== v) { dps.dataset.v = v; dps.innerHTML = v; }
+    }
   }
 
   function setPlacing(type) {
     G.placing = G.spectator ? null : type;
-    if (G.placing) G.selected = null;
+    if (G.placing) { G.selected = null; G.placingSlime = null; }
     renderPanel(true);
     if (G.cur) updateHud();
   }
@@ -687,21 +781,25 @@
   }
 
   function tileFree(col, row) {
-    if (col < 0 || row < 0 || col >= GD.COLS || row >= GD.ROWS) return false;
+    if (col < 0 || row < 0 || col >= G.cols || row >= G.rows) return false;
     if (G.map.pathTiles.has(col + ',' + row)) return false;
     const me = G.cur && G.cur.boards[G.you];
-    return !(me && me.towers.some((t) => t[2] === col && t[3] === row));
+    if (!me) return true;
+    // test field: a slime placed by hand stands exactly on its tile center (split children never do)
+    if (G.sandbox && me.enemies.some((e) => e[7] === col * 100 + 50 && e[8] === row * 100 + 50)) return false;
+    return !me.towers.some((t) => t[2] === col && t[3] === row);
   }
 
   function bindInput() {
     const c = $('cv-main');
     c.addEventListener('mousemove', (e) => { G.hover = tileFromEvent(e); G.cursor = Object.assign({}, G.hover); G.kb = false; });
     c.addEventListener('mouseleave', () => { G.hover = null; });
-    c.addEventListener('contextmenu', (e) => { e.preventDefault(); setPlacing(null); G.selected = null; renderPanel(true); });
+    c.addEventListener('contextmenu', (e) => { e.preventDefault(); G.placingSlime = null; setPlacing(null); G.selected = null; renderPanel(true); });
     c.addEventListener('click', (e) => {
       if (!G.active || !G.cur) return;
       const { col, row } = tileFromEvent(e);
       G.shift = e.shiftKey;
+      if (G.placingSlime) { act({ type: 'slime', enemy: G.placingSlime, col, row }); return; } // test field
       if (G.placing) {
         if (!tileFree(col, row)) return toast("Can't build there", 'bad');
         act({ type: 'place', tower: G.placing, col, row });
@@ -721,7 +819,9 @@
     window.addEventListener('keydown', (e) => {
       // typing in a field or choosing in a dropdown (admin Powers) must not send slimes or build
       const tag = e.target.tagName;
-      if (!G.active || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // (a checkbox or button keeps the shortcuts working; text and number fields take the keys)
+      const typing = tag === 'SELECT' || tag === 'TEXTAREA' || (tag === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(e.target.type));
+      if (!G.active || typing) return;
       if (G.picking) {
         if (G.spectator) return;
         const cards = [...document.querySelectorAll('#pick-grid .pick-tower')];
@@ -739,15 +839,15 @@
         if (e.key === 'Enter' && !cards.includes(document.activeElement) && !$('pick-ready').disabled) $('pick-ready').click();
         return;
       }
-      if (e.key === 'Escape') { setPlacing(null); G.selected = null; renderPanel(true); return; }
+      if (e.key === 'Escape') { G.placingSlime = null; setPlacing(null); G.selected = null; renderPanel(true); return; }
       // Keyboard play: arrows move a cursor, Enter builds or selects, T changes targeting
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (dir) {
         e.preventDefault();
-        if (!G.cursor) G.cursor = { col: 7, row: 5 };
+        if (!G.cursor) G.cursor = { col: Math.min(7, G.cols - 1), row: Math.min(5, G.rows - 1) };
         else {
-          G.cursor.col = Math.max(0, Math.min(GD.COLS - 1, G.cursor.col + dir[0]));
-          G.cursor.row = Math.max(0, Math.min(GD.ROWS - 1, G.cursor.row + dir[1]));
+          G.cursor.col = Math.max(0, Math.min(G.cols - 1, G.cursor.col + dir[0]));
+          G.cursor.row = Math.max(0, Math.min(G.rows - 1, G.cursor.row + dir[1]));
         }
         G.hover = Object.assign({}, G.cursor);
         G.kb = true;
@@ -758,6 +858,7 @@
         e.preventDefault();
         const { col, row } = G.cursor;
         G.shift = e.shiftKey;
+        if (G.placingSlime) { act({ type: 'slime', enemy: G.placingSlime, col, row }); return; }
         if (G.placing) {
           if (!tileFree(col, row)) { toast("Can't build there", 'bad'); return; }
           act({ type: 'place', tower: G.placing, col, row });
@@ -778,8 +879,13 @@
       const card = document.querySelector(`#tower-bar [data-key="${e.key}"]`);
       if (card) { setPlacing(G.placing === card.dataset.type ? null : card.dataset.type); return; }
       const bk = BULK_KEYS[e.key.toLowerCase()];
-      if (bk && !e.ctrlKey && !e.metaKey) { bulkSend(bk); return; }
+      if (bk && !e.ctrlKey && !e.metaKey && !G.sandbox) { bulkSend(bk); return; }
       const si = SEND_KEYS.indexOf(e.key.toLowerCase());
+      if (si >= 0 && !e.ctrlKey && !e.metaKey && G.sandbox) { // test field: the send keys pick a slime type
+        const type = GD.ENEMY_ORDER[si];
+        if (type) setSlime(G.placingSlime === type ? null : type);
+        return;
+      }
       if (si >= 0 && !e.ctrlKey && !e.metaKey) {
         const btn = document.querySelector(`#send-grid .send[data-i="${si}"]`);
         if (btn && !btn.disabled) act({ type: 'send', pack: GD.SENDS[si].id });
@@ -788,6 +894,13 @@
       if (G.selected && (e.key === 'u' || e.key === 'U')) act({ type: 'upgrade', id: G.selected });
       if (G.selected && (e.key === 'Delete' || e.key === 'Backspace')) act({ type: 'sell', id: G.selected });
     });
+    // test field tools
+    // the round box gives the keys back to the game once a value is set (Enter or leaving the box)
+    $('sb-round').addEventListener('change', (e) => { act({ type: 'sandbox', round: Number(e.target.value) }); e.target.blur(); });
+    $('sb-round').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); });
+    $('sb-respawn').addEventListener('change', (e) => act({ type: 'sandbox', respawn: e.target.checked }));
+    $('sb-clear').addEventListener('click', () => act({ type: 'sandbox', clear: true }));
+    $('sb-reset').addEventListener('click', () => act({ type: 'sandbox', resetDamage: true }));
     document.querySelector('.send-bulk').addEventListener('click', (e) => {
       const b = e.target.closest('[data-bulk]');
       if (b) bulkSend(b.dataset.bulk);
@@ -803,9 +916,9 @@
     });
     $('btn-forfeit').addEventListener('click', (e) => {
       const b = e.currentTarget;
-      if (b.classList.contains('armed')) { G.net.forfeit(); return; }
+      if (b.classList.contains('armed') || G.sandbox) { G.net.forfeit(); return; } // leaving a test field needs no confirm
       b.classList.add('armed'); b.textContent = 'Click again to confirm';
-      setTimeout(() => { b.classList.remove('armed'); b.textContent = 'Forfeit'; }, 3000);
+      setTimeout(() => { b.classList.remove('armed'); b.textContent = G.sandbox ? 'Leave' : 'Forfeit'; }, 3000);
     });
   }
 
@@ -813,7 +926,7 @@
   function frame() {
     if (!G.active) return;
     draw($('cv-main'), G.you, true);
-    draw($('cv-opp'), 1 - G.you, false);
+    if (!G.sandbox) draw($('cv-opp'), 1 - G.you, false); // a test field has no other lane
     if (G.cur) {
       const left = Math.max(0, G.cur.nextIncome - (now() - G.curAt));
       $('hud-income-bar').style.transform = `scaleX(${1 - left / GD.RULES.incomeInterval})`;
@@ -877,16 +990,15 @@
     const inside = (list, p) => list.some(([sx, sy, r2]) => (p.x - sx) * (p.x - sx) + (p.y - sy) * (p.y - sy) <= r2);
 
     const sorted = b.enemies.slice().sort((x, y) => GD.ENEMIES[GD.ENEMY_ORDER[x[1]]].r - GD.ENEMIES[GD.ENEMY_ORDER[y[1]]].r);
+    const hpLabels = [];
     for (const e of sorted) {
-      let d = e[2] / 100;
       const pe = pb && pb.emap && pb.emap.get(e[0]);
-      if (pe) d = pe[2] / 100 + (d - pe[2] / 100) * a;
-      const p = GD.posAt(G.map, d);
+      const p = slimePos(e, pe || null, a) || GD.posAt(G.map, e[2] / 100);
       const type = GD.ENEMY_ORDER[e[1]];
       const hit = G.hits[bi].get(e[0]);
       // a ghost on the board that none of your ghost-seeing towers can reach gets a warning
       const ghost = !!GD.ENEMIES[type].ghost;
-      const unseen = !!seers && ghost && p.x >= 0 && p.x <= GD.COLS && p.y >= 0 && p.y <= GD.ROWS && !inside(seers, p);
+      const unseen = !!seers && ghost && p.x >= 0 && p.x <= G.cols && p.y >= 0 && p.y <= G.rows && !inside(seers, p);
       R.slime(g, type, p.x * T, p.y * T, T, {
         time: t, id: e[0], hp: e[3], slowed: e[4], dx: p.dx, dy: p.dy, unseen,
         lit: ghost && lights.length > 0 && inside(lights, p), // a ghost in a lantern's light is drawn solid
@@ -894,6 +1006,12 @@
         // sent slimes wear a headband: pink in your lane (from your opponent), lime in theirs (from you)
         band: e[5] ? (bi === G.you ? '#ff6fa8' : '#9be15d') : null,
       });
+      if (e.length > 9) hpLabels.push([p.x * T, (p.y - GD.ENEMIES[type].r) * T - 9, e[9]]);
+    }
+    // test field: exact HP above each standing slime (drawn last so other slimes don't cover it)
+    if (hpLabels.length) {
+      g.font = '700 11px Lexend, sans-serif'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = 'rgba(14,9,24,0.85)'; g.fillStyle = '#fff';
+      for (const [x, y, hp] of hpLabels) { g.strokeText(hp, x, Math.max(10, y)); g.fillText(hp, x, Math.max(10, y)); }
     }
 
     for (const f of G.effects) if (f.b === bi) effect(g, f, t);
@@ -912,6 +1030,16 @@
       R.tower(g, G.placing, 0, cx, cy, skin, 0, T, t, { noBadge: true });
       g.globalAlpha = 1;
       if (!ok) { g.fillStyle = 'rgba(255,60,60,0.35)'; g.fillRect(col * T, row * T, T, T); }
+    }
+    // test field: a see-through slime where the next one would go (red on a tower)
+    if (main && G.placingSlime && G.hover && G.hover.col >= 0 && G.hover.row >= 0 && G.hover.col < G.cols && G.hover.row < G.rows) {
+      const { col, row } = G.hover;
+      const onTower = b.towers.some((tw) => tw[2] === col && tw[3] === row);
+      g.globalAlpha = 0.6;
+      R.slime(g, G.placingSlime, (col + 0.5) * T, (row + 0.5) * T, T, { time: t, id: 0, hp: 100, dx: 0, dy: 1 });
+      g.globalAlpha = 1;
+      g.strokeStyle = onTower ? '#ff5c5c' : '#ffffff'; g.lineWidth = 2; g.setLineDash([4, 4]);
+      g.strokeRect(col * T + 1, row * T + 1, T - 2, T - 2); g.setLineDash([]);
     }
   }
 

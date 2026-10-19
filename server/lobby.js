@@ -40,6 +40,8 @@ class Lobby {
       steps++;
       for (const [id, entry] of this.matches) {
         try {
+          // a test field nobody owns any more (its player is in another match) is closed quietly
+          if (entry.match.sandbox && this.userMatch.get(entry.uids[0]) !== id) { entry.match.forfeit(0); continue; }
           for (let i = 0; i < this.speed; i++) entry.match.tick();
         } catch (e) {
           this.crashed(id, entry, e);
@@ -69,6 +71,21 @@ class Lobby {
     if (old && old.id !== socket.id) { old.emit('kicked', { reason: 'Logged in somewhere else' }); old.disconnect(true); }
     this.sockets.set(uid, socket);
 
+    // A malformed payload (e.g. an object whose toString isn't a function, which String() and |0 throw on)
+    // must fail just that request, not crash the server: every handler on this socket runs inside try/catch.
+    const on = socket.on.bind(socket);
+    socket.on = (ev, fn) => on(ev, (...args) => {
+      const fail = (e) => {
+        console.error(`[socket] ${ev} from ${uid} failed:`, e && e.message);
+        const ack = args[args.length - 1];
+        if (typeof ack === 'function') ack({ ok: false, error: 'Invalid request' });
+      };
+      try {
+        const r = fn(...args);
+        if (r && typeof r.catch === 'function') r.catch(fail);
+      } catch (e) { fail(e); }
+    });
+
     let actions = 0, windowStart = Date.now();
     const limited = () => {
       const now = Date.now();
@@ -81,6 +98,7 @@ class Lobby {
     socket.on('createRoom', (mapId) => this.createRoom(uid, mapId));
     socket.on('joinRoom', (code) => this.joinRoom(uid, code));
     socket.on('playBot', (diff, mapId) => this.playBot(uid, diff, mapId));
+    socket.on('playSandbox', (size) => this.playSandbox(uid, size).catch((e) => console.error(e)));
     socket.on('action', (a, ack) => {
       if (limited()) { if (typeof ack === 'function') ack({ ok: false, error: 'Slow down' }); return; }
       const res = this.withMatch(uid, (match, idx) => match.handleAction(idx, a)) || { ok: false, error: 'Not in a match' };
@@ -156,6 +174,7 @@ class Lobby {
     if (this.busy(uid)) return err('Finish your own match first');
     const entry = this.matches.get(this.userMatch.get(targetId));
     if (!entry) return err('Your friend is not in a match right now');
+    if (entry.match.sandbox) return err('Your friend is in the test field');
     this.stopSpectate(uid);
     this.clearPending(uid);
     const idx = entry.uids.indexOf(targetId);
@@ -265,10 +284,33 @@ class Lobby {
     this.startMatch([{ uid }, { bot: diff }], 'bot', maps.validMap(String(mapId || ''))).catch((e) => console.error(e));
   }
 
-  async startMatch(entries, mode, mapId) {
+  // Test field for admins and players with powers: any board size, every tower, standing slimes, nothing counts
+  async playSandbox(uid, size) {
+    if (this.busy(uid)) return;
+    this.userMatch.set(uid, 'pending'); // claimed before the await, so a double Open can't start two fields
+    const s = this.sockets.get(uid);
+    const u = await this.store.getById(uid);
+    if (!u || !prog.publicProfile(u).powers) {
+      if (this.userMatch.get(uid) === 'pending') this.userMatch.delete(uid);
+      return s && s.emit('errorMsg', 'The test field needs powers access');
+    }
+    const L = GD.SANDBOX, n = (v, lo, hi, def) => Math.max(lo, Math.min(hi, Math.floor(Number(v)) || def));
+    const cols = n(size && size.cols, L.minCols, L.maxCols, GD.COLS), rows = n(size && size.rows, L.minRows, L.maxRows, GD.ROWS);
+    this.clearPending(uid);
+    this.startMatch([{ uid, allTowers: true }, { idle: true }], 'sandbox', undefined, { cols, rows }).catch((e) => console.error(e));
+  }
+
+  async startMatch(entries, mode, mapId, sandbox) {
+    // Claim every player before the first await: two start requests handled back to back must not both
+    // start a match (the extra one would run unowned and keep sending its snapshots to the player)
+    const humans = entries.filter((e) => e.uid);
+    if (humans.some((e) => this.matches.has(this.userMatch.get(e.uid)))) return;
+    humans.forEach((e) => this.userMatch.set(e.uid, 'pending'));
     const players = [];
     for (const e of entries) {
-      if (e.bot) {
+      if (e.idle) {
+        players.push({ isBot: true, idle: true, name: 'Test field', level: 0, unlocked: [], skin: 'skin_classic', banner: 'banner_slate' });
+      } else if (e.bot) {
         const [skin, banner] = BOT_LOOKS[e.bot];
         players.push({ isBot: true, difficulty: e.bot, name: BOT_NAMES[e.bot], level: 0, unlocked: GD.TOWER_ORDER.slice(), skin, banner });
       } else {
@@ -276,7 +318,8 @@ class Lobby {
         if (!u) { entries.forEach((x) => x.uid && this.userMatch.get(x.uid) === 'pending' && this.userMatch.delete(x.uid)); return; }
         this.userMatch.set(e.uid, 'pending');
         const pub = prog.publicProfile(u);
-        players.push({ uid: u.id, name: u.username, level: GD.levelInfo(u.xp).level, rating: u.rating || 1000, unlocked: u.unlocked.slice(), skin: u.skin, banner: u.banner, cheats: pub.powers });
+        players.push({ uid: u.id, name: u.username, level: GD.levelInfo(u.xp).level, rating: u.rating || 1000,
+          unlocked: e.allTowers ? GD.TOWER_ORDER.slice() : u.unlocked.slice(), skin: u.skin, banner: u.banner, cheats: pub.powers && !sandbox });
       }
     }
     const uids = players.map((p) => p.uid || null);
@@ -284,8 +327,10 @@ class Lobby {
       players,
       mode,
       mapId,
+      sandbox,
       onSnapshot: (idx, snap) => {
-        const s = this.sockets.get(uids[idx]);
+        // only to a player whose current match this is (never let a stray match draw over their real one)
+        const s = this.userMatch.get(uids[idx]) === match.id && this.sockets.get(uids[idx]);
         if (s) s.volatile.emit('snap', snap);
         const entry = this.matches.get(match.id);
         if (entry && entry.spectators) {
@@ -310,7 +355,7 @@ class Lobby {
       this.emitStatus(uid);
     });
     players.forEach((p, idx) => {
-      if (p.isBot && Math.random() < 0.7) setTimeout(() => this.emitTo(uids, 'emote', { from: idx, id: 0 }), 2500);
+      if (p.isBot && !p.idle && Math.random() < 0.7) setTimeout(() => this.emitTo(uids, 'emote', { from: idx, id: 0 }), 2500);
     });
     uids.forEach((u) => u && friends.announce(this, u).catch(() => {}));
     console.log(`[match] ${match.id} ${mode} on ${match.mapId}: ${players.map((p) => p.name).join(' vs ')}`);
@@ -319,8 +364,8 @@ class Lobby {
 
   startInfo(match, idx) {
     return {
-      matchId: match.id, you: idx, mode: match.mode, map: match.mapId,
-      mapDef: { name: match.map.name, path: match.map.path, theme: match.map.theme },
+      matchId: match.id, you: idx, mode: match.mode, map: match.mapId, sandbox: !!match.sandbox,
+      mapDef: { name: match.map.name, path: match.map.path, theme: match.map.theme, cols: match.map.cols, rows: match.map.rows },
       players: match.players.map((p, i) => ({ name: p.name, level: p.level, rating: p.rating, skin: p.skin, banner: p.banner, isBot: !!p.isBot, unlocked: p.unlocked, cheats: i === idx && !!p.cheats })),
     };
   }
@@ -336,7 +381,16 @@ class Lobby {
       }
     }
     this.matches.delete(match.id);
-    uids.forEach((uid) => uid && this.userMatch.delete(uid));
+    // players whose current match this is (anyone already in another match keeps it and gets no end screen)
+    const owner = uids.map((uid) => !!uid && this.userMatch.get(uid) === match.id);
+    uids.forEach((uid, i) => owner[i] && this.userMatch.delete(uid));
+    if (match.sandbox) { // the test field gives nothing and records nothing
+      this.emitTo(uids.filter((u, i) => owner[i]), 'matchEnd', { mode: 'sandbox', reason: result.reason });
+      uids.forEach((u) => { if (u) { this.emitStatus(u); friends.announce(this, u).catch(() => {}); } });
+      console.log(`[match] ${match.id} test field closed (${result.reason})`);
+      this.broadcastOnline();
+      return;
+    }
     // Matches ended by an early forfeit, by a server error, or where admin powers were used, don't count toward records
     const early = ((result.reason === 'forfeit' || result.reason === 'disconnect') && result.round < GD.RULES.earlyEndRound)
       || result.reason === 'error' || !!match.cheated;
@@ -362,7 +416,7 @@ class Lobby {
       rewards.rating = ratingDelta[idx];
       if (match.mode === 'pvp' && uids[1 - idx]) this.rematch.set(uid, { opp: uids[1 - idx], at: Date.now(), wants: false, mapId: ended && ended.mapId });
       await this.store.save(u);
-      const s = this.sockets.get(uid);
+      const s = owner[idx] && this.sockets.get(uid);
       if (s) {
         s.emit('matchEnd', {
           won, draw, reason: result.reason, round: result.round, early, cheated: !!match.cheated, rewards, mode: match.mode,

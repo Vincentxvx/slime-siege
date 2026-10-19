@@ -69,7 +69,8 @@
         c += sc; r += sr;
       }
     }
-    return Object.assign({ id, segs, length: total, pathTiles: tiles }, def);
+    // cols/rows: board size in tiles (only the test field differs from COLS × ROWS)
+    return Object.assign({ id, segs, length: total, pathTiles: tiles, cols: COLS, rows: ROWS }, def);
   }
 
   const MAPS = {};
@@ -110,6 +111,13 @@
     return null;
   }
   function registerMap(id, def) { MAPS[id] = buildMap(id, def); return MAPS[id]; }
+
+  // Test field (admins and players with powers): any size, no path, slimes placed by hand stand still.
+  // Its map is never registered on the server, so it can't end up in the random map pool.
+  const SANDBOX = { minCols: 4, maxCols: 32, minRows: 4, maxRows: 24, maxSlimes: 150, maxRound: 60 };
+  function sandboxMap(cols, rows) {
+    return buildMap(`sandbox:${cols}x${rows}`, { name: 'Test field', path: [], theme: THEMES.meadow, cols, rows });
+  }
 
   function posAt(map, d) {
     const segs = map.segs;
@@ -426,6 +434,6 @@
     COLS, ROWS, RULES, MAPS, posAt, ENEMIES, ENEMY_ORDER, TOWERS, TOWER_ORDER, DEFAULT_TOWERS,
     TARGET_MODES, towerStats, towerValue, sellValue, shotCost, growth, SENDS, roundWave, hpMulForRound,
     xpForNext, levelInfo, titleFor, SKINS, BANNERS, DEFAULT_COSMETICS, EMOTES, DAILY_WIN_BONUS,
-    BUILTIN_MAPS, THEMES, validatePath, registerMap,
+    BUILTIN_MAPS, THEMES, validatePath, registerMap, SANDBOX, sandboxMap,
   };
 });
