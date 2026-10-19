@@ -22,6 +22,8 @@ class Match {
     this.mode = mode;
     this.mapId = mapId || (GD.MAPS[process.env.FORCE_MAP] ? process.env.FORCE_MAP : pick(Object.keys(GD.MAPS)));
     this.map = GD.MAPS[this.mapId];
+    // a custom map can be deleted between choosing it and the match starting: play a built-in map instead
+    if (!Object.hasOwn(GD.MAPS, this.mapId)) { this.mapId = pick(GD.BUILTIN_MAPS); this.map = GD.MAPS[this.mapId]; }
     this.players = players;
     this.onSnapshot = onSnapshot || (() => {});
     this.onEnd = onEnd || (() => {});
@@ -140,11 +142,12 @@ class Match {
   }
 
   // spd: speed multiplier for slimes sent with a Royal Brood hatchery (children keep it)
-  spawnEnemy(b, type, d, hpMul, sent, spd) {
+  // own: an admin spawned it into their own lane, so it counts as sent but wears no headband
+  spawnEnemy(b, type, d, hpMul, sent, spd, own) {
     const E = GD.ENEMIES[type];
     const hp = Math.max(1, Math.round(E.hp * hpMul));
     const p = GD.posAt(this.map, d);
-    const e = { id: b.nextId++, type, d, hp, maxHp: hp, hpMul, sent: !!sent, spd: spd || 1, slowUntil: 0, slowAmt: 0, rootUntil: 0, rootImmune: 0, lit: 0, x: p.x, y: p.y, dead: false };
+    const e = { id: b.nextId++, type, d, hp, maxHp: hp, hpMul, sent: !!sent, own: !!own, spd: spd || 1, slowUntil: 0, slowAmt: 0, rootUntil: 0, rootImmune: 0, lit: 0, x: p.x, y: p.y, dead: false };
     b.enemies.push(e);
     return e;
   }
@@ -152,7 +155,7 @@ class Match {
   updateBoard(b) {
     while (b.queue.length && b.queue[0].t <= this.time) {
       const q = b.queue.shift();
-      this.spawnEnemy(b, q.type, 0, q.hpMul, q.sent, q.spd);
+      this.spawnEnemy(b, q.type, 0, q.hpMul, q.sent, q.spd, q.own);
     }
     const len = this.map.length;
     for (let i = b.enemies.length - 1; i >= 0; i--) {
@@ -179,7 +182,7 @@ class Match {
     }
     for (const t of b.towers) this.updateTower(b, t);
     if (b.enemies.some((e) => e.dead)) b.enemies = b.enemies.filter((e) => !e.dead);
-    for (const s of b.pending) this.spawnEnemy(b, s.type, Math.max(0, s.d), s.hpMul, s.sent, s.spd);
+    for (const s of b.pending) this.spawnEnemy(b, s.type, Math.max(0, s.d), s.hpMul, s.sent, s.spd, s.own);
     b.pending.length = 0;
   }
 
@@ -372,7 +375,7 @@ class Match {
       e.dead = true;
       if (!e.sent) b.gold += E.bounty; // sent slimes pay no bounty, so sending is never a gift
       b.stats.kills++;
-      if (!petrify) (E.children || []).forEach((type, i) => b.pending.push({ type, d: e.d - 0.15 * i, hpMul: e.hpMul, sent: e.sent, spd: e.spd }));
+      if (!petrify) (E.children || []).forEach((type, i) => b.pending.push({ type, d: e.d - 0.15 * i, hpMul: e.hpMul, sent: e.sent, spd: e.spd, own: e.own }));
     }
   }
 
@@ -498,7 +501,7 @@ class Match {
         const hpMul = GD.hpMulForRound(Math.max(1, this.round));
         target.sendCursor = Math.max(target.sendCursor, Math.max(0, this.time) + 0.3);
         const gap = Math.max(0.08, Math.min(0.6, 0.8 / Math.sqrt(GD.ENEMIES[type].speed * 2)));
-        for (let i = 0; i < count; i++) { target.queue.push({ t: target.sendCursor, type, hpMul, sent: true }); target.sendCursor += gap; }
+        for (let i = 0; i < count; i++) { target.queue.push({ t: target.sendCursor, type, hpMul, sent: true, own: target === b }); target.sendCursor += gap; }
         target.queue.sort((x, y) => x.t - y.t);
         break;
       }
@@ -516,6 +519,7 @@ class Match {
       }
       case 'clear': { // remove every slime on your own board
         b.enemies = []; b.queue = b.queue.filter((q) => !q.sent);
+        b.sendCursor = 0; // no sent slimes are queued any more, so the opponent's next send arrives on time
         break;
       }
       default: done = false;
@@ -574,8 +578,8 @@ class Match {
       // 7th tower field: Storm Jar stored charges, Elder Sapling growth before its cap (the client caps it per level)
       towers: b.towers.map((t) => [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target],
         t.stats.kind === 'jar' ? Math.floor(t.charge || 0) : t.stats.growCap ? Math.floor(Math.max(0, this.round - t.born) / t.stats.growEvery) : 0]),
-      // 5th slime field: 1 slowed by Frost, 2 rooted by a Bramble Snare
-      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.rootUntil > this.time ? 2 : e.slowUntil > this.time ? 1 : 0, e.sent ? 1 : 0, e.hit ? 1 : 0]),
+      // 5th slime field: 1 slowed by Frost, 2 rooted by a Bramble Snare; 6th: sent by a player (headband)
+      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.rootUntil > this.time ? 2 : e.slowUntil > this.time ? 1 : 0, e.sent && !e.own ? 1 : 0, e.hit ? 1 : 0]),
       ev: b.events,
     };
   }

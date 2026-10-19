@@ -106,7 +106,7 @@
     }
     const hist = p.history || [];
     $('history').innerHTML = hist.length
-      ? hist.map((h) => `<li class="${h.draw ? 'draw' : h.won ? 'win' : 'loss'}"><b>${h.draw ? 'Draw' : h.won ? 'Win' : 'Loss'}</b><span>vs ${esc(h.opp || '?')}</span><small>R${h.round} · ${ago(h.at)}</small></li>`).join('')
+      ? hist.map((h) => `<li class="${h.stopped ? 'stopped' : h.draw ? 'draw' : h.won ? 'win' : 'loss'}"><b>${h.stopped ? 'Stopped' : h.draw ? 'Draw' : h.won ? 'Win' : 'Loss'}</b><span>vs ${esc(h.opp || '?')}</span><small>R${h.round} · ${ago(h.at)}</small></li>`).join('')
       : '<li class="empty">No matches yet. Try a bot to warm up.</li>';
   }
 

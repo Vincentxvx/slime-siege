@@ -92,6 +92,7 @@ Both stores cache user docs in memory; the single server process is the only wri
 - Mines were dominant (pure-defense bots with 4 mines beat everyone) → capped at 3 and nerfed; send eco buffed. After that, sending is worth it and hard > normal > easy in sims.
 - Bot difficulty ordering must hold in `npm run sim` (hard should beat easy ~10–12 of 12). Re-run sims after any balance or bot change.
 - Matches ended by forfeit/disconnect before round 5, or where **admin powers** were used, don't count toward wins/losses/rating and give 20% rewards (anti-farming).
+- A match whose tick throws is ended alone by `Lobby.crashed()` (reason `error`, counted like an early end, "Stopped" in history), so one bug can't take down the server and every other match. Map ids from clients go through `maps.validMap` (own keys only); `Match` falls back to a built-in map if its map is gone.
 
 ## Features (all live)
 

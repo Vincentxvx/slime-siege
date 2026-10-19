@@ -301,10 +301,11 @@ input {
 .daily { margin: 0; font-size: 13px; color: var(--gold); font-weight: 600; }
 .history-box summary { cursor: pointer; font-weight: 700; font-size: 14px; }
 .history { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; max-height: 190px; overflow: auto; }
-.history li { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; background: var(--ink); border-radius: 8px; padding: 4px 10px; }
+.history li { display: grid; grid-template-columns: 4.4em 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; background: var(--ink); border-radius: 8px; padding: 4px 10px; }
 .history li.win b { color: var(--lime); }
 .history li.loss b { color: var(--pink); }
 .history li.draw b { color: var(--gold); }
+.history li.stopped b { color: var(--muted); }
 .history li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history li small { color: var(--muted); }
 .history li.empty { display: block; color: var(--muted); }

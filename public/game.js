@@ -614,23 +614,28 @@
           <p class="hint">Click a free tile (or move with the arrows and press <kbd>Enter</kbd>) to build for <b class="gold">${T0.cost}</b>. Hold Shift to keep building. Esc cancels.</p>`;
       } else if (tw) {
         const type = GD.TOWER_ORDER[tw[1]], T0 = GD.TOWERS[type], level = tw[4];
-        const next = T0.upgrades[level];
+        // a spectator sees the watched player's tower read-only: no upgrade preview, sell or targeting buttons
+        const next = G.spectator ? null : T0.upgrades[level];
         const lvlLabel = level >= 3 ? 'Level MAX' : `Level ${level + 1}`;
-        const upHtml = next
+        const upHtml = G.spectator ? `<p class="muted">${T0.desc}</p>` : next
           ? `<div class="next-up"><div><b>${next.name}</b><small title="${next.desc}">${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
           : '<div class="next-up maxed"><b>Fully upgraded</b></div>';
-        const modes = NO_TARGET.has(T0.base.kind) ? '' :
-          `<div class="seg" role="group" aria-label="Targeting">${GD.TARGET_MODES.map((m, i) =>
-            `<button data-mode="${m}" class="${tw[5] === i ? 'on' : ''}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>`;
+        const modeName = (m) => m[0].toUpperCase() + m.slice(1);
+        const modes = NO_TARGET.has(T0.base.kind) ? ''
+          : G.spectator ? `<p class="muted">Targeting: <b>${modeName(GD.TARGET_MODES[tw[5]] || 'first')}</b></p>`
+          : `<div class="seg" role="group" aria-label="Targeting">${GD.TARGET_MODES.map((m, i) =>
+            `<button data-mode="${m}" class="${tw[5] === i ? 'on' : ''}">${modeName(m)}</button>`).join('')}</div>`;
         const cur = GD.towerStats(type, level), nx = next ? GD.towerStats(type, level + 1) : null;
         // Elder Sapling: tw[6] is its growth before the cap; each level caps it (a higher cap pays out at once)
         if (cur.growCap) { cur.dmg += Math.min(cur.growCap, tw[6] || 0); if (nx) nx.dmg += Math.min(nx.growCap, tw[6] || 0); }
-        panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span><button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button></div>
+        const sell = G.spectator ? '' : `<button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button>`;
+        panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span>${sell}</div>
           ${upHtml}${modes}${statChips(cur, nx)}`;
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
-        panel.querySelector('[data-act=sell]').onclick = () => act({ type: 'sell', id: tw[0] });
+        const sb = panel.querySelector('[data-act=sell]');
+        if (sb) sb.onclick = () => act({ type: 'sell', id: tw[0] });
       } else if (G.spectator) {
         panel.innerHTML = `<h3>Watching ${esc(G.info.watching)}</h3><p class="muted">You're seeing ${esc(G.info.watching)}'s lane. Their opponent's lane is in the smaller view. Click a tower to see its stats.</p>`;
       } else {
@@ -651,8 +656,8 @@
   }
 
   function setPlacing(type) {
-    G.placing = type;
-    if (type) G.selected = null;
+    G.placing = G.spectator ? null : type;
+    if (G.placing) G.selected = null;
     renderPanel(true);
     if (G.cur) updateHud();
   }
@@ -701,8 +706,17 @@
       G.selected = tw ? tw[0] : null;
       renderPanel(true);
     });
+    // The next-wave box covers the bottom-right tiles: pass its mouse events on to the board, so those
+    // tiles still build and select while the box keeps its slime name tooltips
+    const nw = $('next-wave');
+    for (const type of ['mousemove', 'click', 'contextmenu']) {
+      nw.addEventListener(type, (e) => { e.preventDefault(); c.dispatchEvent(new MouseEvent(type, e)); });
+    }
+    nw.addEventListener('mouseleave', (e) => { if (e.relatedTarget !== c) G.hover = null; });
     window.addEventListener('keydown', (e) => {
-      if (!G.active || e.target.tagName === 'INPUT') return;
+      // typing in a field or choosing in a dropdown (admin Powers) must not send slimes or build
+      const tag = e.target.tagName;
+      if (!G.active || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (G.picking) {
         if (G.spectator) return;
         const cards = [...document.querySelectorAll('#pick-grid .pick-tower')];
@@ -734,7 +748,8 @@
         G.kb = true;
         return;
       }
-      if (e.key === 'Enter' && G.cursor && G.cur && !G.spectator) {
+      // (a spectator's Enter on a focused button, like Stop watching, stays a button press)
+      if (e.key === 'Enter' && G.cursor && G.cur && !G.ended && !(G.spectator && tag === 'BUTTON')) {
         e.preventDefault();
         const { col, row } = G.cursor;
         G.shift = e.shiftKey;
@@ -748,6 +763,7 @@
         renderPanel(true);
         return;
       }
+      if (G.spectator) return; // watching: towers can be inspected, but there is nothing to build, upgrade or send
       if ((e.key === 't' || e.key === 'T') && G.selected && G.cur) {
         const tw = G.cur.boards[G.you].tmap.get(G.selected);
         const kind = tw && GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.kind;
@@ -1085,6 +1101,7 @@
     forfeit: (won) => (won ? 'Your opponent forfeited.' : 'You forfeited.'),
     disconnect: (won) => (won ? 'Your opponent disconnected.' : 'You were disconnected too long.'),
     draw: () => 'Both lanes fell at the same moment.',
+    error: () => "The match stopped because of a server error, so it doesn't count toward rating or wins.",
   };
 
   function end(res, onExit) {
@@ -1093,7 +1110,7 @@
     $('end-again').hidden = false;
     const o = $('end-overlay');
     o.hidden = false;
-    $('end-title').textContent = res.draw ? 'Draw' : res.won ? 'Victory' : 'Defeat';
+    $('end-title').textContent = res.reason === 'error' ? 'Match stopped' : res.draw ? 'Draw' : res.won ? 'Victory' : 'Defeat';
     o.className = 'end ' + (res.draw ? 'draw' : res.won ? 'win' : 'loss');
     $('end-reason').textContent = (REASONS[res.reason] || REASONS.lives)(res.won) + ` Reached round ${res.round}.`;
     const r = res.rewards;
@@ -1105,7 +1122,7 @@
       (r.levelUps ? `<p class="lvlup">Level up! You're now level ${r.level}.</p>` : '') +
       (r.daily ? `<p class="lvlup">First win of the day: +${r.daily} bonus coins included.</p>` : '') +
       (res.cheated ? '<p class="muted">Admin powers were used, so this match doesn\'t count toward rating or wins.</p>'
-        : res.early ? '<p class="muted">Match ended before round 5, so it counts for less and not toward your record.</p>' : '');
+        : res.early && res.reason !== 'error' ? '<p class="muted">Match ended before round 5, so it counts for less and not toward your record.</p>' : '');
     $('end-back').onclick = () => { stop(); onExit(); };
   }
 
@@ -1117,8 +1134,8 @@
     const o = $('end-overlay');
     o.hidden = false;
     o.className = 'end draw';
-    $('end-title').textContent = r.winner ? `${r.winner} won` : 'Draw';
-    $('end-reason').textContent = `${(REASONS[r.reason] ? '' : '')}The match ended in round ${r.round}.`;
+    $('end-title').textContent = r.reason === 'error' ? 'Match stopped' : r.winner ? `${r.winner} won` : 'Draw';
+    $('end-reason').textContent = (r.reason === 'error' ? 'The match stopped because of a server error. ' : '') + `The match ended in round ${r.round}.`;
     $('end-rewards').innerHTML = '';
     $('end-rematch').hidden = true;
     $('end-again').hidden = true;

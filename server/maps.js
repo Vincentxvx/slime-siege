@@ -22,7 +22,8 @@ function list() {
   })));
 }
 
-const validMap = (id) => (id && GD.MAPS[id] ? id : undefined);
+// own keys only: a crafted id like "constructor" must not pass as a map
+const validMap = (id) => (id && Object.hasOwn(GD.MAPS, id) ? id : undefined);
 
 function mount(app, { store, authed, wrap, canEdit, isAdmin }) {
   const save = () => store.setMeta('maps', custom);

@@ -38,10 +38,26 @@ class Lobby {
     while (this.acc >= TICK_MS && steps < 10) {
       this.acc -= TICK_MS;
       steps++;
-      for (const { match } of this.matches.values()) {
-        for (let i = 0; i < this.speed; i++) match.tick();
+      for (const [id, entry] of this.matches) {
+        try {
+          for (let i = 0; i < this.speed; i++) entry.match.tick();
+        } catch (e) {
+          this.crashed(id, entry, e);
+        }
       }
     }
+  }
+
+  // A bug in one match must not take the whole server (and every other match) down: end just that match.
+  // It counts like an early end: no rating, no win or loss, reduced rewards.
+  crashed(id, entry, err) {
+    console.error(`[match] ${id} crashed, ending it`, err);
+    if (this.matches.get(id) !== entry) return; // finish() already ran
+    const { match } = entry;
+    match.state = 'ended';
+    match.result = { winner: -1, reason: 'error', round: match.round };
+    // finish() frees the match and its players before its first await, so a later failure only needs logging
+    this.finish(match, entry.uids, match.result).catch((e) => console.error('finish failed', e));
   }
 
   online() { return this.sockets.size; }
@@ -180,7 +196,7 @@ class Lobby {
     if (o && o.opp === uid && o.wants && this.sockets.has(r.opp) && !this.busy(r.opp)) {
       this.rematch.delete(uid); this.rematch.delete(r.opp);
       this.clearPending(uid); this.clearPending(r.opp);
-      this.startMatch([{ uid: r.opp }, { uid }], 'pvp').catch((e) => console.error(e));
+      this.startMatch([{ uid: r.opp }, { uid }], 'pvp', maps.validMap(r.mapId)).catch((e) => console.error(e));
       return;
     }
     this.emitTo([uid], 'rematchStatus', { state: 'waiting' });
@@ -236,7 +252,7 @@ class Lobby {
     if (!host) return s && s.emit('errorMsg', 'Room not found');
     if (host === uid) return s && s.emit('errorMsg', "That's your own room");
     if (this.busy(uid)) return;
-    const mapId = this.roomMap.get(code);
+    const mapId = maps.validMap(this.roomMap.get(code)); // the room's custom map may have been deleted since
     this.clearPending(host);
     this.clearPending(uid);
     this.startMatch([{ uid: host }, { uid }], 'pvp', mapId).catch((e) => console.error(e));
@@ -282,7 +298,8 @@ class Lobby {
       },
       onEnd: (result) => this.finish(match, uids, result).catch((e) => console.error('finish failed', e)),
     });
-    this.matches.set(match.id, { match, uids, spectators: new Map() });
+    // mapId stays undefined for a random map, so a rematch only keeps a map the players chose
+    this.matches.set(match.id, { match, uids, spectators: new Map(), mapId });
     uids.forEach((uid, idx) => {
       if (!uid) return;
       this.stopSpectate(uid);
@@ -320,8 +337,9 @@ class Lobby {
     }
     this.matches.delete(match.id);
     uids.forEach((uid) => uid && this.userMatch.delete(uid));
-    // Matches ended by an early forfeit, or where admin powers were used, don't count toward records
-    const early = ((result.reason === 'forfeit' || result.reason === 'disconnect') && result.round < GD.RULES.earlyEndRound) || !!match.cheated;
+    // Matches ended by an early forfeit, by a server error, or where admin powers were used, don't count toward records
+    const early = ((result.reason === 'forfeit' || result.reason === 'disconnect') && result.round < GD.RULES.earlyEndRound)
+      || result.reason === 'error' || !!match.cheated;
     const users = await Promise.all(uids.map((uid) => (uid ? this.store.getById(uid) : null)));
     // Elo rating for real PvP results
     const ratingDelta = [0, 0];
@@ -337,12 +355,12 @@ class Lobby {
       const draw = result.winner === -1;
       const quitter = !won && !draw && (result.reason === 'forfeit' || result.reason === 'disconnect');
       const rewards = prog.applyResult(u, {
-        mode: match.mode, won, draw, round: result.round, early, quitter,
+        mode: match.mode, won, draw, round: result.round, early, quitter, stopped: result.reason === 'error',
         difficulty: match.players[1 - idx].difficulty, opponent: match.players[1 - idx].name,
       });
       u.rating = Math.max(100, (u.rating || 1000) + ratingDelta[idx]);
       rewards.rating = ratingDelta[idx];
-      if (match.mode === 'pvp' && uids[1 - idx]) this.rematch.set(uid, { opp: uids[1 - idx], at: Date.now(), wants: false });
+      if (match.mode === 'pvp' && uids[1 - idx]) this.rematch.set(uid, { opp: uids[1 - idx], at: Date.now(), wants: false, mapId: ended && ended.mapId });
       await this.store.save(u);
       const s = this.sockets.get(uid);
       if (s) {

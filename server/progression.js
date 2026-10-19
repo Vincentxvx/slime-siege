@@ -91,8 +91,9 @@ function applyResult(u, ctx) {
     if (ctx.mode === 'pvp') { if (ctx.won) u.wins++; else u.losses++; }
     else if (ctx.won) u.botWins++;
   }
-  u.history = [{ opp: ctx.opponent, mode: ctx.mode, won: !!ctx.won, draw: !!ctx.draw, round, at: Date.now() }]
-    .concat(u.history || []).slice(0, 10);
+  const entry = { opp: ctx.opponent, mode: ctx.mode, won: !!ctx.won, draw: !!ctx.draw, round, at: Date.now() };
+  if (ctx.stopped) entry.stopped = true; // ended by a server error
+  u.history = [entry].concat(u.history || []).slice(0, 10);
   return { xp, coins, levelUps, levelBonus, daily, level: after };
 }
 
