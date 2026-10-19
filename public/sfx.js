@@ -61,9 +61,12 @@
     win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.22, 'triangle', 0.18, null, i * 0.12)),
     lose: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.28, 'triangle', 0.16, null, i * 0.15)),
     start: () => [262, 392].forEach((f, i) => tone(f, 0.15, 'square', 0.08, null, i * 0.12)),
+    flame: () => noise(0.16, 0.07, 900),                                        // Ember Drake breath
+    hex: () => tone(330, 0.2, 'sine', 0.08, 165),                               // Hex Idol curse
+    stone: () => { noise(0.12, 0.16, 600); tone(260, 0.1, 'triangle', 0.08, 120); }, // Basilisk shatter
   };
   // Minimum gap per sound so a big wave doesn't become noise
-  const GAP = { arrow: 0.06, shot: 0.08, boom: 0.09, zap: 0.08, pulse: 0.2, pop: 0.045, coin: 0.15, leak: 0.25 };
+  const GAP = { arrow: 0.06, shot: 0.08, boom: 0.09, zap: 0.08, pulse: 0.2, pop: 0.045, coin: 0.15, leak: 0.25, flame: 0.2, hex: 0.15, stone: 0.12 };
 
   function play(name) {
     if (muted || !SOUNDS[name]) return;

@@ -40,6 +40,7 @@ public/sfx.js         Synthesized sound effects + mute toggle
 public/style.css      All styles
 tools/sim.js          Headless bot-vs-bot balance simulator
 tools/e2e.js          Two socket clients play a full PvP match against a running server
+tools/towers.js       Headless test: every tower at every level + the special tower rules (npm run test:towers)
 tools/trace.js        Per-round trace of a bot match (debug balance)
 render.yaml           Render Blueprint (free plan, Frankfurt, NODE_VERSION 22, SESSION_SECRET generated)
 ```
@@ -53,6 +54,7 @@ ADMIN_USERS=vince npm start                # make "vince" an admin locally
 GAME_SPEED=10 FORCE_MAP=glacier npm start  # testing: faster matches, fixed map
 
 npm run sim -- 20 normal hard              # bot balance check (also: easy, hard, turtle, turtle0)
+npm run test:towers                        # every tower at every level, plus the special tower rules
 node tools/trace.js hard easy              # round-by-round trace
 GAME_SPEED=10 npm start  &&  npm run test:e2e -- http://localhost:3000
 ```
@@ -83,6 +85,7 @@ Both stores cache user docs in memory; the single server process is the only wri
 - 100 lives, 650 start gold, income 75 every 6 s, round every 20 s (round 1 after 8 s prep). Slime HP ramps after round 18 (+12%/round, steeper after 30) so matches end around rounds 22–35.
 - **Tower selection**: every match starts with a 20 s picking phase; each player brings 4 of their unlocked towers (`loadoutSize`). Players with ≤4 unlocked skip it. Empty slots auto-fill when time runs out. Server enforces (place() checks `players[i].unlocked`, which becomes the loadout). Bots bring fixed loadouts (`botLoadout()` in match.js; hard = cannon, sniper, tesla, mine).
 - Towers: archer, cannon, frost, sniper, mine (Gold Mine, **max 3**), tesla; 3 upgrades each, sell 70%. Slimes: green, blue, yellow, purple (splits), ghost (needs detection), armored (armor 2, needs pierce), king (boss rounds 20/25/30…).
+- Newer towers (appended to `TOWERS` so tower indices in snapshots stay stable; each has a `kind` handled in `match.updateTower`): lantern (`light`: ghosts in its radius get `e.lit` and are visible to all towers), hex (`shot` with `pct` of max HP, `maxHit` cap, `defaultTarget: 'strong'`), bramble (`snare`: roots via `e.rootUntil`, immunity `rootGap`), hatchery (`nest`, max 1: more/tougher/faster sends in `send()`), basilisk (`gaze`: petrify = kill without children), stormjar (`jar`: stored `charge`), ballista (`lance`: pierces a line), drake (`flame`: cone), goldspitter (`coin`: pays `GD.shotCost` gold per shot), sapling (`arrow` + `GD.growth` from `t.born`). Tower tuple field 7 = jar charges / sapling growth; slime field 5 = 2 when rooted. Bots never bring them (fixed `botLoadout`), so sims don't cover their balance; `npm run test:towers` covers their rules.
 - Sends: 9 packs unlocked by round, each with a cooldown. **Sent slimes pay no bounty** to the defender.
 
 ### Balance decisions (keep unless asked)

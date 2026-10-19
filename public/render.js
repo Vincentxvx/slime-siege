@@ -229,6 +229,205 @@
         }
         break;
       }
+      case 'lantern': { // iron post and a glass lantern with a flickering flame
+        const fl = 0.85 + 0.12 * Math.sin(t * 11) + 0.05 * Math.sin(t * 23 + 1);
+        if (L >= 3) { // Lighthouse: a slowly sweeping beam
+          g.save(); g.rotate(t * 1.2); g.fillStyle = 'rgba(255,236,170,0.22)';
+          g.beginPath(); g.moveTo(0, -5); g.lineTo(20, -10); g.lineTo(20, 0); g.closePath(); g.fill(); g.restore();
+        }
+        const glowR = (L >= 1 ? 14 : 11) * fl;
+        const glow = g.createRadialGradient(0, -5, 1, 0, -5, glowR);
+        glow.addColorStop(0, 'rgba(255,220,120,0.8)'); glow.addColorStop(1, 'rgba(255,200,80,0)');
+        g.fillStyle = glow; g.beginPath(); g.arc(0, -5, glowR, 0, 7); g.fill();
+        g.fillStyle = '#2b2a38'; g.fillRect(-1.8, 1, 3.6, 10); roundRect(g, -7, 10, 14, 3.5, 1.5); g.fill(); // post and foot
+        if (L >= 3) { g.fillStyle = '#e0453a'; g.fillRect(-1.8, 3, 3.6, 2.4); g.fillRect(-1.8, 7.5, 3.6, 2.4); } // red stripes
+        g.fillStyle = 'rgba(255,236,170,0.55)'; g.strokeStyle = '#1f1d2a'; g.lineWidth = 1.6;
+        roundRect(g, -5.5, -10, 11, 11.5, 2.5); g.fill(); g.stroke();
+        g.fillStyle = L >= 3 ? '#e0453a' : '#1f1d2a'; roundRect(g, -7, -13.5, 14, 4, 1.8); g.fill(); // cap
+        g.fillStyle = '#ffb02e'; g.beginPath(); g.moveTo(0, -8.5 - 1.5 * fl); g.quadraticCurveTo(3.4, -3, 0, -1.2); g.quadraticCurveTo(-3.4, -3, 0, -8.5 - 1.5 * fl); g.fill();
+        g.fillStyle = '#fff3b8'; g.beginPath(); g.ellipse(0, -3.4, 1.3, 2.2, 0, 0, 7); g.fill();
+        if (L >= 2) { g.strokeStyle = '#d6dee8'; g.lineWidth = 1.4; g.beginPath(); g.arc(0, -4.5, 8, 0, 7); g.stroke(); } // lens ring
+        break;
+      }
+      case 'hex': { // carved stone totem with glowing eyes; runes circle it
+        const glow = 0.6 + 0.4 * Math.sin(t * 4);
+        if (L >= 3) { g.fillStyle = `rgba(190,90,255,${0.18 + 0.12 * glow})`; g.beginPath(); g.arc(0, 0, 15, 0, 7); g.fill(); } // aura
+        if (L >= 2) { // two small side idols
+          g.fillStyle = '#4b3766'; g.strokeStyle = '#1b1226'; g.lineWidth = 1.2;
+          for (const sx of [-11.5, 11.5]) { roundRect(g, sx - 3, -3, 6, 13, 2); g.fill(); g.stroke(); g.fillStyle = '#ff6fe0'; g.fillRect(sx - 1, 0, 2, 2); g.fillStyle = '#4b3766'; }
+        }
+        g.fillStyle = '#3a2a4f'; g.strokeStyle = '#1b1226'; g.lineWidth = 1.8;
+        roundRect(g, -8, -13, 16, 25, 4); g.fill(); g.stroke();
+        g.fillStyle = '#54407a'; g.fillRect(-8, -1, 16, 2.5); g.fillRect(-8, 7, 16, 1.6); // carved bands
+        g.shadowColor = '#ff4fd8'; g.shadowBlur = 6 + 6 * glow; g.fillStyle = '#ff6fe0';
+        const er = L >= 1 ? 2.6 : 2;
+        for (const ex of [-3.5, 3.5]) { g.beginPath(); g.arc(ex, -6.5, er, 0, 7); g.fill(); }
+        g.shadowBlur = 0;
+        g.strokeStyle = '#ff6fe0'; g.lineWidth = 1.2;
+        g.beginPath(); g.moveTo(-4, 4); g.lineTo(-2, 5.8); g.lineTo(0, 4); g.lineTo(2, 5.8); g.lineTo(4, 4); g.stroke(); // jagged mouth
+        if (L >= 3) { // gold horns
+          g.fillStyle = '#f0b81c'; g.strokeStyle = '#8a6410'; g.lineWidth = 1;
+          for (const sx of [-1, 1]) { g.beginPath(); g.moveTo(sx * 4, -12); g.quadraticCurveTo(sx * 12, -14, sx * 10, -19); g.quadraticCurveTo(sx * 8, -15, sx * 1.5, -12.5); g.closePath(); g.fill(); g.stroke(); }
+        }
+        g.save(); g.rotate(t * 0.8); g.fillStyle = 'rgba(214,140,255,0.85)'; // turning rune ring
+        for (let i = 0; i < 6; i++) { const q = (i * Math.PI) / 3; g.fillRect(Math.cos(q) * 14.5 - 1.2, Math.sin(q) * 14.5 - 1.2, 2.4, 2.4); }
+        g.restore();
+        break;
+      }
+      case 'bramble': { // spiky bush; vine whips turn toward the target
+        g.fillStyle = '#2f6b2a'; g.strokeStyle = '#163a14'; g.lineWidth = 1.4;
+        g.beginPath();
+        for (let i = 0; i < 14; i++) { const q = (i / 14) * Math.PI * 2, rr = i % 2 ? 7 : 12.5; g.lineTo(Math.cos(q) * rr, Math.sin(q) * rr); }
+        g.closePath(); g.fill(); g.stroke();
+        g.fillStyle = '#3f8a36'; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill();
+        if (L >= 1) { g.fillStyle = '#d23b3b'; for (let i = 0; i < 14; i += 2) { const q = (i / 14) * Math.PI * 2; g.beginPath(); g.arc(Math.cos(q) * 12.5, Math.sin(q) * 12.5, 1.4, 0, 7); g.fill(); } }
+        const whips = L >= 3 ? 3 : L >= 2 ? 2 : 1;
+        g.save(); g.rotate(a); g.strokeStyle = '#5aa845'; g.lineWidth = 2.4; g.lineCap = 'round';
+        for (let w = 0; w < whips; w++) {
+          g.save(); g.rotate((w - (whips - 1) / 2) * 0.5);
+          g.beginPath(); g.moveTo(0, 0); g.bezierCurveTo(6, -5 + Math.sin(t * 6 + w) * 1.5, 10, 5, 16, 0); g.stroke();
+          g.restore();
+        }
+        g.restore();
+        if (L >= 3) { g.fillStyle = '#ff8fc8'; for (let i = 0; i < 5; i++) { const q = (i / 5) * Math.PI * 2; g.beginPath(); g.arc(Math.cos(q) * 2.6, Math.sin(q) * 2.6, 2, 0, 7); g.fill(); } g.fillStyle = '#ffd35c'; g.beginPath(); g.arc(0, 0, 1.6, 0, 7); g.fill(); }
+        break;
+      }
+      case 'hatchery': { // straw nest with speckled eggs that wobble
+        if (L >= 1) { // warm steam wisps
+          g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1.3;
+          for (let i = 0; i < 2; i++) { const q = (t * 0.6 + i / 2) % 1; g.globalAlpha = 1 - q; g.beginPath(); g.moveTo(-3 + i * 6, -6 - q * 8); g.quadraticCurveTo(-1 + i * 6, -9 - q * 8, -3 + i * 6, -12 - q * 8); g.stroke(); }
+          g.globalAlpha = 1;
+        }
+        g.fillStyle = '#b8893f'; g.strokeStyle = '#6e4c1c'; g.lineWidth = 1.6;
+        g.beginPath(); g.ellipse(0, 5, 13.5, 7.5, 0, 0, 7); g.fill(); g.stroke();
+        g.strokeStyle = 'rgba(110,76,28,0.6)'; g.lineWidth = 1;
+        for (let i = -2; i <= 2; i++) { g.beginPath(); g.arc(i * 5, 5, 6, 0.3, 2.8); g.stroke(); }
+        const eggs = L >= 2 ? [[-6.5, 1, '#9be15d'], [0, -1, '#ff6fa8'], [6.5, 1, '#e8e2ff'], [-3.2, 4, '#ffd35c'], [3.2, 4, '#7fd2ff']]
+          : L >= 1 ? [[-5.5, 1, '#9be15d'], [0, -1, '#ff6fa8'], [5.5, 1, '#e8e2ff']] : [[-3.5, 0, '#9be15d'], [3.5, 0, '#ff6fa8']];
+        if (L >= 3) eggs.splice(1, 1, [0, -2, '#f0b81c']);
+        eggs.forEach(([ex, ey, col], i) => {
+          g.save(); g.translate(ex, ey); g.rotate(Math.sin(t * 3 + i * 1.7) * 0.15);
+          g.fillStyle = col; g.strokeStyle = '#2b1d3a'; g.lineWidth = 1.1;
+          g.beginPath(); g.ellipse(0, 0, 3.4, 4.4, 0, 0, 7); g.fill(); g.stroke();
+          g.fillStyle = 'rgba(0,0,0,0.2)'; g.beginPath(); g.arc(-1, -1, 0.7, 0, 7); g.arc(1.2, 1, 0.6, 0, 7); g.fill();
+          if (col === '#f0b81c') { g.fillStyle = '#ffd35c'; g.strokeStyle = '#8a6410'; g.beginPath(); g.moveTo(-2.5, -4); g.lineTo(-2.5, -6.5); g.lineTo(-1, -5.2); g.lineTo(0, -7); g.lineTo(1, -5.2); g.lineTo(2.5, -6.5); g.lineTo(2.5, -4); g.closePath(); g.fill(); g.stroke(); }
+          g.restore();
+        });
+        break;
+      }
+      case 'basilisk': { // stone pedestal with a big reptile eye that follows the target
+        if (L >= 2) { g.fillStyle = '#6b6e78'; for (const sx of [-8, 0, 8]) { g.beginPath(); g.moveTo(sx - 3, -8); g.lineTo(sx, -15); g.lineTo(sx + 3, -8); g.closePath(); g.fill(); } } // stone spikes
+        g.fillStyle = '#7c7f8a'; g.strokeStyle = '#3d3f47'; g.lineWidth = 1.6;
+        roundRect(g, -12, -9, 24, 19, 6); g.fill(); g.stroke();
+        if (L >= 1) { g.strokeStyle = '#4f9a5a'; g.lineWidth = 1.2; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(-10 + i * 4, 8, 2, Math.PI, 0); g.stroke(); } } // scales
+        const er = L >= 2 ? 9.5 : 8;
+        g.fillStyle = '#f3e7a1'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 1.4;
+        g.beginPath(); g.ellipse(0, 0, er, er * 0.62, 0, 0, 7); g.fill(); g.stroke();
+        const ix = Math.cos(a) * er * 0.28, iy = Math.sin(a) * er * 0.18;
+        g.fillStyle = '#d9a514'; g.beginPath(); g.arc(ix, iy, er * 0.5, 0, 7); g.fill();
+        g.fillStyle = '#111'; g.beginPath(); g.ellipse(ix, iy, 1.3, er * 0.42, 0, 0, 7); g.fill();
+        if (L >= 3) { // crown of tiny swaying snakes
+          for (let i = 0; i < 5; i++) {
+            const q = -Math.PI * 0.85 + (i / 4) * Math.PI * 0.7, sway = Math.sin(t * 4 + i) * 0.12;
+            const hx = Math.cos(q + sway) * 15, hy = Math.sin(q + sway) * 12.5;
+            g.strokeStyle = '#3f8a36'; g.lineWidth = 1.8; g.beginPath(); g.moveTo(Math.cos(q) * 10, Math.sin(q) * 8); g.lineTo(hx, hy); g.stroke();
+            g.fillStyle = '#5aa845'; g.beginPath(); g.arc(hx, hy, 2, 0, 7); g.fill();
+          }
+        }
+        break;
+      }
+      case 'stormjar': { // glass jar with a storm cloud; the yellow fill shows stored charges
+        const st = GD.towerStats('stormjar', L);
+        const fill = opts && opts.extra != null ? Math.min(1, opts.extra / st.charges) : 0.6;
+        const h = L >= 1 ? 22 : 19, top = -h / 2 - 1;
+        g.save(); roundRect(g, -9, top + 3, 18, h, 6); g.clip();
+        g.fillStyle = 'rgba(110,180,255,0.5)'; g.fillRect(-10, top, 20, h + 4);
+        g.fillStyle = 'rgba(255,226,90,0.65)'; g.fillRect(-10, top + 3 + h * (1 - fill), 20, h * fill + 1);
+        g.restore();
+        g.strokeStyle = '#2a5f8a'; g.lineWidth = 1.8; roundRect(g, -9, top + 3, 18, h, 6); g.stroke();
+        g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(-7, top + 6, 2, h - 8); // glass shine
+        g.fillStyle = L >= 3 ? '#3d3658' : '#5d6d8c'; // the storm cloud
+        for (const [cx, cy, cr] of [[-3, -1, 3.4], [1.5, -2.5, 3.8], [4.5, 0, 2.8]]) { g.beginPath(); g.arc(cx, cy, cr, 0, 7); g.fill(); }
+        if (fill > 0.05) { // crackle
+          g.strokeStyle = L >= 3 ? `rgba(220,190,255,${0.5 + 0.5 * Math.sin(t * 17)})` : `rgba(255,230,90,${0.5 + 0.5 * Math.sin(t * 17)})`; g.lineWidth = 1.3;
+          g.beginPath(); g.moveTo(-1, 1); g.lineTo(1.5, 4); g.lineTo(-0.5, 5); g.lineTo(2, 8); g.stroke();
+        }
+        if (L >= 2) { g.strokeStyle = '#c8793a'; g.lineWidth = 1.5; for (const yy of [top + 8, top + 13, top + 18]) { g.beginPath(); g.moveTo(-9, yy); g.lineTo(9, yy + 2.5); g.stroke(); } } // copper coil
+        g.fillStyle = L >= 3 ? '#f0b81c' : '#a0703c'; g.strokeStyle = '#4a321a'; g.lineWidth = 1;
+        roundRect(g, -6, top - 1, 12, 5, 2); g.fill(); g.stroke(); // cork / lid
+        break;
+      }
+      case 'ballista': { // turntable with a big crossbow, aimed like the Archer
+        g.fillStyle = '#7a5530'; g.strokeStyle = '#4a321a'; g.lineWidth = 2;
+        g.beginPath(); g.arc(0, 0, 11, 0, 7); g.fill(); g.stroke();
+        if (L >= 3) { g.fillStyle = '#5a5f6b'; for (const sy of [-7, 7]) { g.beginPath(); g.arc(-7, sy, 3, 0, 7); g.fill(); } } // winch drums
+        g.rotate(a);
+        g.strokeStyle = L >= 2 ? '#3d2a16' : '#5a3d1f'; g.lineWidth = L >= 2 ? 3.4 : 2.8;
+        g.beginPath(); g.moveTo(1, -14); g.quadraticCurveTo(8, 0, 1, 14); g.stroke(); // bow limbs
+        if (L >= 2) { g.fillStyle = '#9aa3ad'; g.fillRect(2.5, -10, 2.5, 2.5); g.fillRect(2.5, 7.5, 2.5, 2.5); } // iron bands
+        g.strokeStyle = '#eee'; g.lineWidth = 1; g.beginPath(); g.moveTo(1, -14); g.lineTo(-5, 0); g.lineTo(1, 14); g.stroke(); // string
+        g.fillStyle = '#4a321a'; g.fillRect(-7, -2, 14, 4); // stock
+        const bl = L >= 1 ? 19 : 16;
+        g.strokeStyle = '#2a2018'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(-5, 0); g.lineTo(bl, 0); g.stroke();
+        g.fillStyle = L >= 3 ? '#f0b81c' : L >= 1 ? '#c9d3df' : '#2a2018';
+        g.beginPath(); g.moveTo(bl + 4, 0); g.lineTo(bl - 1, -3); g.lineTo(bl - 1, 3); g.closePath(); g.fill();
+        break;
+      }
+      case 'drake': { // stone pedestal with a small dragon head that turns to its target
+        g.fillStyle = '#8a8d96'; g.strokeStyle = '#4a4c54'; g.lineWidth = 1.6;
+        g.beginPath(); g.arc(0, 0, 10.5, 0, 7); g.fill(); g.stroke();
+        g.rotate(a);
+        if (L >= 1) { g.fillStyle = '#2f7a3a'; for (const sy of [-1, 1]) { g.beginPath(); g.moveTo(-3, sy * 4); g.lineTo(-11, sy * 13); g.lineTo(-6, sy * 6); g.lineTo(-12, sy * 8); g.closePath(); g.fill(); } } // wings
+        g.fillStyle = L >= 3 ? '#f0b81c' : L >= 2 ? '#7fd2ff' : '#e8e0c8'; // horns
+        for (const sy of [-1, 1]) { g.beginPath(); g.moveTo(-3, sy * 4); g.lineTo(-10, sy * 7); g.lineTo(-2, sy * 1.5); g.closePath(); g.fill(); }
+        if (L >= 3) { g.fillStyle = '#f0b81c'; for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(-5 + i * 3, -1); g.lineTo(-3.5 + i * 3, -5.5); g.lineTo(-2 + i * 3, -1); g.fill(); } } // crest
+        g.fillStyle = '#4fae5a'; g.strokeStyle = '#1f5a2a'; g.lineWidth = 1.4;
+        g.beginPath(); g.ellipse(1, 0, 8.5, 6.5, 0, 0, 7); g.fill(); g.stroke(); // head
+        g.beginPath(); g.ellipse(9.5, 0, 5.5, 4, 0, 0, 7); g.fill(); g.stroke(); // snout
+        g.fillStyle = '#1f5a2a'; g.beginPath(); g.arc(12.5, -1.8, 0.8, 0, 7); g.arc(12.5, 1.8, 0.8, 0, 7); g.fill(); // nostrils
+        g.fillStyle = '#ffd35c'; g.beginPath(); g.arc(2.5, -3, 1.8, 0, 7); g.arc(2.5, 3, 1.8, 0, 7); g.fill();
+        g.fillStyle = '#111'; g.fillRect(2.2, -4.2, 0.8, 2.4); g.fillRect(2.2, 1.8, 0.8, 2.4); // slit pupils
+        if (L >= 2) { g.fillStyle = `rgba(120,200,255,${0.6 + 0.3 * Math.sin(t * 8)})`; g.beginPath(); g.arc(15, 0, 1.8, 0, 7); g.fill(); } // blue mouth glow
+        if (L >= 3) { g.rotate(-a); g.fillStyle = 'rgba(200,200,210,0.5)'; for (let i = 0; i < 2; i++) { const q = (t * 0.8 + i / 2) % 1; g.globalAlpha = 1 - q; g.beginPath(); g.arc(-2 + i * 4, -8 - q * 9, 2 + q * 2, 0, 7); g.fill(); } g.globalAlpha = 1; } // smoke
+        break;
+      }
+      case 'goldspitter': { // squat brass pot with a coin slot and a flared spout
+        const body = L >= 3 ? '#f0c23a' : '#c9963a';
+        if (L >= 3) { g.fillStyle = '#ffd35c'; g.strokeStyle = '#8a6410'; g.lineWidth = 0.8; for (const [cx, cy] of [[-9, 10], [-5, 11.5], [8, 10.5], [4, 12]]) { g.beginPath(); g.ellipse(cx, cy, 3, 1.6, 0, 0, 7); g.fill(); g.stroke(); } } // coin pile
+        g.save(); g.rotate(a);
+        g.fillStyle = body; g.strokeStyle = '#6b4a12'; g.lineWidth = 1.6;
+        const spout = (rot, sc) => { g.save(); g.rotate(rot); g.scale(sc, sc); g.beginPath(); g.moveTo(5, -3.5); g.lineTo(16, -6.5); g.lineTo(16, 6.5); g.lineTo(5, 3.5); g.closePath(); g.fill(); g.stroke(); g.restore(); };
+        if (L >= 2) spout(0.65, 0.75); // Ricochet: a second spout
+        spout(0, 1);
+        g.restore();
+        g.fillStyle = body; g.strokeStyle = '#6b4a12'; g.lineWidth = 1.8;
+        g.beginPath(); g.arc(0, 1, 10, 0, 7); g.fill(); g.stroke();
+        g.fillStyle = '#2b1d00'; roundRect(g, -4.5, -8, 9, 2.4, 1); g.fill(); // coin slot
+        g.fillStyle = 'rgba(255,255,255,0.35)'; g.beginPath(); g.ellipse(-4, -2, 2.5, 4, 0.5, 0, 7); g.fill();
+        if (L >= 1) { g.fillStyle = '#fff7c2'; const gl = 0.6 + 0.4 * Math.sin(t * 5); g.globalAlpha = gl; g.beginPath(); g.moveTo(4, -4); g.lineTo(5, -2); g.lineTo(7, -1); g.lineTo(5, 0); g.lineTo(4, 2); g.lineTo(3, 0); g.lineTo(1, -1); g.lineTo(3, -2); g.closePath(); g.fill(); g.globalAlpha = 1; } // glint
+        break;
+      }
+      case 'sapling': { // soil mound and a young tree that grows with its growth (opts.extra)
+        const grow = opts && opts.extra != null ? opts.extra : 0, k2 = Math.min(1, grow / 12);
+        if (L >= 1) { g.strokeStyle = '#5a3d1f'; g.lineWidth = 1.4; for (const [rx, ry] of [[-14, 9], [13, 10], [-11, 13], [10, 13.5]]) { g.beginPath(); g.moveTo(0, 7); g.quadraticCurveTo(rx * 0.5, ry, rx, ry); g.stroke(); } } // roots
+        g.fillStyle = '#6b4a2b'; g.beginPath(); g.ellipse(0, 8, 11, 5, 0, 0, 7); g.fill();
+        const h = 6 + 11 * k2;
+        g.strokeStyle = L >= 2 ? '#9aa3ad' : '#6b4a2b'; g.lineWidth = 2 + 2.5 * k2; g.lineCap = 'round';
+        g.beginPath(); g.moveTo(0, 7); g.lineTo(0, 7 - h); g.stroke();
+        if (L >= 3) { // Ancient Oak: big round canopy with golden blossoms
+          g.fillStyle = '#3f8a36'; g.strokeStyle = '#1f5a2a'; g.lineWidth = 1.4;
+          g.beginPath(); g.arc(0, 7 - h - 3, 8 + 3 * k2, 0, 7); g.fill(); g.stroke();
+          g.fillStyle = '#ffd35c'; for (let i = 0; i < 5; i++) { const q = i * 1.26; g.beginPath(); g.arc(Math.cos(q) * 5, 7 - h - 3 + Math.sin(q) * 5, 1.4, 0, 7); g.fill(); }
+        } else {
+          const leaves = 2 + Math.round(grow / 1.5);
+          g.fillStyle = '#5ab84a'; g.strokeStyle = '#2a6a22'; g.lineWidth = 1;
+          for (let i = 0; i < leaves; i++) {
+            const ly = 7 - h + (i / Math.max(1, leaves - 1)) * (h - 4), side = i % 2 ? 1 : -1, sway = Math.sin(t * 3 + i) * 0.15;
+            g.beginPath(); g.ellipse(side * 3.5, ly, 3.6, 1.8, side * 0.5 + sway, 0, 7); g.fill(); g.stroke();
+          }
+        }
+        break;
+      }
     }
     g.restore();
     // level badge (bottom-right corner)
@@ -249,6 +448,7 @@
   // opts.flash (0-1): just took damage, so it squishes and flashes white
   // opts.band (colour): sent by a player, so it wears a headband in that colour
   // opts.unseen: a ghost none of your towers can see, so it gets a dashed pink ring and a crossed-out eye
+  // opts.slowed: 1 = Frost ring, 2 = rooted by vines; opts.lit: a ghost in a Glow Lantern's light
   function slime(g, type, x, y, size, opts) {
     opts = opts || {};
     const E = GD.ENEMIES[type];
@@ -258,7 +458,7 @@
     const rx = r * (1 + wob), ry = r * (1 - wob);
     g.save();
     g.translate(x, y + r * 0.1);
-    if (E.ghost) g.globalAlpha = 0.5 + 0.12 * Math.sin(t * 5 + id); // ghosts shimmer
+    if (E.ghost) g.globalAlpha = opts.lit ? 0.92 : 0.5 + 0.12 * Math.sin(t * 5 + id); // ghosts shimmer (solid in lantern light)
     g.fillStyle = 'rgba(0,0,0,0.22)';
     g.beginPath(); g.ellipse(0, ry * 0.85, rx * 0.95, ry * 0.3, 0, 0, 7); g.fill();
     // body: flat-bottomed dome
@@ -313,10 +513,19 @@
       g.fillStyle = '#fff'; g.beginPath(); g.ellipse(sx * rx * 0.33, ey, r * 0.19, r * 0.22, 0, 0, 7); g.fill();
       g.fillStyle = '#1a1226'; g.beginPath(); g.arc(sx * rx * 0.33 + lx, ey + ly + r * 0.03, r * 0.1, 0, 7); g.fill();
     }
-    if (opts.slowed) {
+    if (opts.slowed === 2) { // rooted by a Bramble Snare: thorny vine loops around the base
+      g.globalAlpha = 1;
+      g.strokeStyle = '#3f8a36'; g.lineWidth = Math.max(1.4, size / 20);
+      for (const [cx, w] of [[-0.45, 0.55], [0.1, 0.6], [0.6, 0.5]]) { g.beginPath(); g.ellipse(cx * rx, ry * 0.72, rx * w, ry * 0.32, 0, Math.PI * 0.95, Math.PI * 2.05); g.stroke(); }
+      g.fillStyle = '#d23b3b';
+      for (const cx of [-0.7, 0, 0.7]) { g.beginPath(); g.arc(cx * rx, ry * 0.45, Math.max(1, size / 40), 0, 7); g.fill(); }
+    } else if (opts.slowed) {
       g.globalAlpha = 0.85;
       g.strokeStyle = '#d4f4ff'; g.lineWidth = Math.max(1.2, size / 22);
       g.beginPath(); g.ellipse(0, ry * 0.2, rx * 1.15, ry * 0.95, 0, 0, 7); g.stroke();
+    }
+    if (opts.lit) { // a ghost in a Glow Lantern's light: thin gold outline
+      g.globalAlpha = 1; g.strokeStyle = '#ffd35c'; g.lineWidth = Math.max(1, size / 32); body(); g.stroke();
     }
     g.restore();
     if (opts.unseen) {

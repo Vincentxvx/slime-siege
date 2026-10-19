@@ -3,14 +3,14 @@
 A 1v1 online tower defense in the browser. Each player defends their own lane while sending slimes into the opponent's lane. Sends cost gold but permanently raise your income, so every send is a trade between attacking and defending. Player accounts, levels, coins, unlocks and cosmetics are saved on the server.
 
 - **Modes:** quick match against anyone online, a private 4-letter room code for playing a friend, or practice bots (Easy, Normal, Hard). Rematch with one click.
-- **6 towers:** Archer, Cannon, Frost, Sniper, Gold Mine, Tesla Coil. Each has 3 upgrades and a targeting mode. At the start of every match each player has 20 seconds to pick the **4 towers** they bring (players with 4 or fewer unlocked skip this).
+- **16 towers:** Archer, Cannon, Frost, Sniper, Gold Mine, Tesla Coil, Glow Lantern (lights up ghosts), Hex Idol (anti-boss), Bramble Snare (roots slimes), Slime Hatchery (boosts your sends), Basilisk Eye (stops splitting), Storm Jar (stored lightning), Ballista (piercing bolts), Ember Drake (fire cone), Goldspitter (gold per shot) and Elder Sapling (grows every 2 rounds). Each has 3 upgrades. At the start of every match each player has 20 seconds to pick the **4 towers** they bring (players with 4 or fewer unlocked skip this).
 - **7 slimes:** including armored Knights, invisible Ghosts, Big slimes that split, and the Slime King boss.
 - **Maps:** Meadow, Canyon, Glacier, plus custom maps from the built-in **map editor**. Pick the map for bot games and friend rooms; quick matches pick one at random.
 - **Progression:** XP and levels, coins, tower unlocks, tower skins, banners, a rating (Elo) leaderboard, match history and a first-win-of-the-day bonus.
 - **Friends:** add friends by username, see who is online or in a match, invite them straight into a 1v1, or watch their match live.
 - **Extras:** quick chat, sound effects (mute button), hotkeys, a preview of the next wave, and reconnecting after a page reload.
 
-**Controls:** `1`–`6` pick a tower, click to build (hold Shift to build several), `U` upgrade, `T` targeting, `Del` sell, `Esc` cancel. Keyboard only: arrow keys move a cursor, `Enter` builds or selects. Sends are on `Q W E / A S D / Z X C`; quick sends: `R` strongest, `F` best income, `V` everything you can afford.
+**Controls:** `1`–`4` pick a tower, click to build (hold Shift to build several), `U` upgrade, `T` targeting, `Del` sell, `Esc` cancel. Keyboard only: arrow keys move a cursor, `Enter` builds or selects. Sends are on `Q W E / A S D / Z X C`; quick sends: `R` strongest, `F` best income, `V` everything you can afford.
 
 No game engine and no image files: the art is drawn in code on a canvas. The server runs the whole simulation, so a player can't cheat by editing the page.
 
@@ -91,6 +91,7 @@ server/db.js          storage: Postgres or JSON file
 public/               the browser client (lobby, canvas renderer, sounds)
 tools/sim.js          bot-vs-bot balance simulator
 tools/e2e.js          end-to-end test: two socket clients play a full match
+tools/towers.js       headless test: every tower at every level, plus the special tower rules
 ```
 
 ## Changing the game

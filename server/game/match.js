@@ -139,11 +139,12 @@ class Match {
     }
   }
 
-  spawnEnemy(b, type, d, hpMul, sent) {
+  // spd: speed multiplier for slimes sent with a Royal Brood hatchery (children keep it)
+  spawnEnemy(b, type, d, hpMul, sent, spd) {
     const E = GD.ENEMIES[type];
     const hp = Math.max(1, Math.round(E.hp * hpMul));
     const p = GD.posAt(this.map, d);
-    const e = { id: b.nextId++, type, d, hp, maxHp: hp, hpMul, sent: !!sent, slowUntil: 0, slowAmt: 0, x: p.x, y: p.y, dead: false };
+    const e = { id: b.nextId++, type, d, hp, maxHp: hp, hpMul, sent: !!sent, spd: spd || 1, slowUntil: 0, slowAmt: 0, rootUntil: 0, rootImmune: 0, lit: 0, x: p.x, y: p.y, dead: false };
     b.enemies.push(e);
     return e;
   }
@@ -151,14 +152,15 @@ class Match {
   updateBoard(b) {
     while (b.queue.length && b.queue[0].t <= this.time) {
       const q = b.queue.shift();
-      this.spawnEnemy(b, q.type, 0, q.hpMul, q.sent);
+      this.spawnEnemy(b, q.type, 0, q.hpMul, q.sent, q.spd);
     }
     const len = this.map.length;
     for (let i = b.enemies.length - 1; i >= 0; i--) {
       const e = b.enemies[i];
       const E = GD.ENEMIES[e.type];
-      let sp = E.speed;
+      let sp = E.speed * e.spd;
       if (e.slowUntil > this.time) sp *= 1 - e.slowAmt;
+      if (e.rootUntil > this.time) sp *= E.slowResist || 0; // Bramble Snare: rooted (the King only half)
       e.d += sp * DT;
       if (e.d >= len) {
         b.lives -= E.leakTotal;
@@ -169,23 +171,42 @@ class Match {
       const p = GD.posAt(this.map, e.d);
       e.x = p.x; e.y = p.y;
     }
+    // Glow Lanterns: ghosts inside the light can be targeted by every tower this tick
+    for (const t of b.towers) {
+      if (t.stats.kind !== 'light') continue;
+      const rr = t.stats.range * t.stats.range;
+      for (const e of b.enemies) if (dist2(e, t) <= rr) e.lit = this.ticks;
+    }
     for (const t of b.towers) this.updateTower(b, t);
     if (b.enemies.some((e) => e.dead)) b.enemies = b.enemies.filter((e) => !e.dead);
-    for (const s of b.pending) this.spawnEnemy(b, s.type, Math.max(0, s.d), s.hpMul, s.sent);
+    for (const s of b.pending) this.spawnEnemy(b, s.type, Math.max(0, s.d), s.hpMul, s.sent, s.spd);
     b.pending.length = 0;
   }
+
+  // can a tower with these stats target this slime? (ghosts need detection or a Glow Lantern's light)
+  visible(e, s) { return !GD.ENEMIES[e.type].ghost || !!s.detect || e.lit === this.ticks; }
+  onBoard(e) { return e.x >= 0 && e.x <= GD.COLS && e.y >= 0 && e.y <= GD.ROWS; }
 
   candidates(b, t, range) {
     const out = [];
     const r2r = range * range;
     for (const e of b.enemies) {
-      if (e.dead) continue;
-      if (e.x < 0 || e.x > GD.COLS || e.y < 0 || e.y > GD.ROWS) continue;
-      if (GD.ENEMIES[e.type].ghost && !t.stats.detect) continue;
+      if (e.dead || !this.onBoard(e) || !this.visible(e, t.stats)) continue;
       const dx = e.x - t.x, dy = e.y - t.y;
       if (dx * dx + dy * dy <= r2r) out.push(e);
     }
     return out;
+  }
+
+  // nearest other visible slime within 1.6 tiles (Tesla jumps, Goldspitter ricochets)
+  nearestOther(b, from, s, skip) {
+    let best = null, bd = 1.6 * 1.6;
+    for (const o of b.enemies) {
+      if (o.dead || skip.has(o) || !this.onBoard(o) || !this.visible(o, s)) continue;
+      const dd = dist2(o, from);
+      if (dd <= bd) { bd = dd; best = o; }
+    }
+    return best;
   }
 
   sortTargets(list, mode, t) {
@@ -199,21 +220,105 @@ class Match {
 
   updateTower(b, t) {
     const s = t.stats;
-    if (s.kind === 'mine') return;
+    if (s.kind === 'jar') t.charge = Math.min(s.charges, (t.charge || 0) + DT / s.chargeTime);
+    if (!s.rate) return; // Gold Mines, Hatcheries and Lanterns before Flare don't attack
     if (t.cd > 0) t.cd -= DT;
     if (t.cd > 0) return;
-    const c = this.candidates(b, t, s.range);
+    let c = this.candidates(b, t, s.range);
+    if (s.ghostOnly) c = c.filter((e) => GD.ENEMIES[e.type].ghost);
     if (!c.length) return;
+    if (s.kind === 'jar') { if (t.charge < 1) return; t.charge -= 1; } // one stored bolt per shot
+    if (s.kind === 'coin') { // every Goldspitter shot is paid for; when broke it waits
+      const cost = GD.shotCost(s, this.round);
+      if (b.gold < cost) return;
+      b.gold -= cost;
+    }
     t.cd += 1 / s.rate;
     if (t.cd < 0) t.cd = 0;
     switch (s.kind) {
       case 'arrow':
       case 'shot': {
         const list = this.sortTargets(c, t.target, t).slice(0, s.targets || 1);
+        const grow = s.growCap ? GD.growth(s, t.born, this.round) : 0; // Elder Sapling
         for (const e of list) {
           b.events.push([s.kind === 'arrow' ? 'a' : 's', t.id, r2(e.x), r2(e.y)]);
-          this.damage(b, e, s.dmg, s.pierceArmor);
+          // Hex Idol: a share of the slime's max HP, capped per hit
+          const dmg = s.pct ? Math.min(s.maxHit, Math.max(s.dmg, Math.round(e.maxHp * s.pct))) : s.dmg + grow;
+          this.damage(b, e, dmg, s.pierceArmor);
         }
+        break;
+      }
+      case 'snare': { // Bramble Snare: roots slimes that aren't immune yet, extra thorns for fast ones
+        // slimes that can be rooted first, then the rest (they still take thorn damage)
+        const fresh = c.filter((e) => e.rootImmune <= this.time), immune = c.filter((e) => e.rootImmune > this.time);
+        const list = this.sortTargets(fresh, t.target, t).concat(this.sortTargets(immune, t.target, t)).slice(0, s.targets || 1);
+        for (const e of list) {
+          b.events.push(['a', t.id, r2(e.x), r2(e.y)]);
+          if (e.rootImmune <= this.time) { e.rootUntil = this.time + s.root; e.rootImmune = e.rootUntil + s.rootGap; }
+          this.damage(b, e, s.dmg + (GD.ENEMIES[e.type].speed >= 4 ? s.fastBonus : 0), s.pierceArmor);
+        }
+        break;
+      }
+      case 'gaze': { // Basilisk Eye: petrifies weakened slimes that would split, otherwise a weak gaze
+        const petrifiable = (e) => {
+          if (!GD.ENEMIES[e.type].children) return false;
+          const lim = e.type === 'king' ? s.executeKing : s.execute;
+          return !!lim && e.hp <= e.maxHp * lim;
+        };
+        const sorted = this.sortTargets(c, t.target, t);
+        const e = sorted.find(petrifiable) || sorted[0];
+        b.events.push(['s', t.id, r2(e.x), r2(e.y)]);
+        if (petrifiable(e)) {
+          const at = { x: e.x, y: e.y };
+          b.events.push(['b', t.id, r2(at.x), r2(at.y), 0.35]);
+          this.damage(b, e, e.hp, true, true);
+          if (s.shards) for (const o of b.enemies) if (!o.dead && dist2(o, at) <= 1) this.damage(b, o, s.shards, true);
+        } else this.damage(b, e, s.dmg, s.pierceArmor);
+        break;
+      }
+      case 'lance': { // Ballista: the bolt flies through the slimes on its line, up to `pierce`
+        const aim = this.sortTargets(c, t.target, t)[0];
+        const len = Math.hypot(aim.x - t.x, aim.y - t.y) || 1;
+        const dx = (aim.x - t.x) / len, dy = (aim.y - t.y) / len;
+        const hits = [];
+        for (const e of b.enemies) {
+          if (e.dead || !this.onBoard(e) || !this.visible(e, s)) continue;
+          const px = e.x - t.x, py = e.y - t.y, along = px * dx + py * dy;
+          if (along >= 0 && along <= s.range && Math.abs(px * dy - py * dx) <= 0.4) hits.push([along, e]);
+        }
+        hits.sort((p, q) => p[0] - q[0]);
+        for (const [, e] of hits.slice(0, s.pierce)) this.damage(b, e, s.dmg, s.pierceArmor);
+        b.events.push(['s', t.id, r2(t.x + dx * s.range), r2(t.y + dy * s.range)]);
+        break;
+      }
+      case 'flame': { // Ember Drake: every slime in a cone towards the first target
+        const aim = this.sortTargets(c, t.target, t)[0];
+        const a0 = Math.atan2(aim.y - t.y, aim.x - t.x), half = (s.cone * Math.PI) / 360;
+        b.events.push(['a', t.id, r2(aim.x), r2(aim.y)]);
+        for (const e of c) {
+          const da = Math.atan2(e.y - t.y, e.x - t.x) - a0;
+          if (Math.abs(Math.atan2(Math.sin(da), Math.cos(da))) <= half) this.damage(b, e, s.dmg, s.pierceArmor);
+        }
+        break;
+      }
+      case 'coin': { // Goldspitter: one paid coin, Ricochet bounces it to a second slime
+        const e = this.sortTargets(c, t.target, t)[0];
+        const pts = [r2(e.x), r2(e.y)];
+        const next = s.bounce ? this.nearestOther(b, e, s, new Set([e])) : null;
+        this.damage(b, e, s.dmg, s.pierceArmor);
+        if (next) { pts.push(r2(next.x), r2(next.y)); this.damage(b, next, s.dmg, s.pierceArmor); }
+        b.events.push(['c', t.id].concat(pts));
+        break;
+      }
+      case 'jar': { // Storm Jar: one stored bolt (taken above)
+        const e = this.sortTargets(c, t.target, t)[0];
+        b.events.push(['c', t.id, r2(e.x), r2(e.y)]);
+        this.damage(b, e, s.dmg, s.pierceArmor);
+        break;
+      }
+      case 'light': { // Glow Lantern flare: slimes in the light (ghosts only before Lighthouse)
+        b.events.push(['p', t.id]);
+        for (const e of c) this.damage(b, e, s.dmg, s.pierceArmor);
         break;
       }
       case 'bomb': {
@@ -245,13 +350,7 @@ class Match {
         for (let i = 0; i < s.chains && cur; i++) {
           hit.add(cur);
           this.damage(b, cur, s.dmg, s.pierceArmor);
-          let best = null, bd = 1.6 * 1.6;
-          for (const o of b.enemies) {
-            if (o.dead || hit.has(o)) continue;
-            if (GD.ENEMIES[o.type].ghost && !s.detect) continue;
-            const dd = dist2(o, cur);
-            if (dd <= bd) { bd = dd; best = o; }
-          }
+          const best = this.nearestOther(b, cur, s, hit);
           if (best) pts.push(r2(best.x), r2(best.y));
           cur = best;
         }
@@ -261,7 +360,8 @@ class Match {
     }
   }
 
-  damage(b, e, dmg, pierce) {
+  // petrify (Basilisk Eye): the slime dies without splitting into its children
+  damage(b, e, dmg, pierce, petrify) {
     if (e.dead || dmg <= 0) return;
     const E = GD.ENEMIES[e.type];
     const d = pierce ? dmg : dmg - (E.armor || 0);
@@ -272,7 +372,7 @@ class Match {
       e.dead = true;
       if (!e.sent) b.gold += E.bounty; // sent slimes pay no bounty, so sending is never a gift
       b.stats.kills++;
-      (E.children || []).forEach((type, i) => b.pending.push({ type, d: e.d - 0.15 * i, hpMul: e.hpMul, sent: e.sent }));
+      if (!petrify) (E.children || []).forEach((type, i) => b.pending.push({ type, d: e.d - 0.15 * i, hpMul: e.hpMul, sent: e.sent, spd: e.spd }));
     }
   }
 
@@ -305,10 +405,10 @@ class Match {
     if (this.map.pathTiles.has(key)) return { ok: false, error: "Can't build on the path" };
     if (b.occupied.has(key)) return { ok: false, error: 'Tile taken' };
     if (b.towers.length >= R.maxTowers) return { ok: false, error: 'Tower limit reached' };
-    if (T.limit && b.towers.filter((x) => x.type === type).length >= T.limit) return { ok: false, error: `Max ${T.limit} ${T.name}s` };
+    if (T.limit && b.towers.filter((x) => x.type === type).length >= T.limit) return { ok: false, error: T.limit === 1 ? `Only 1 ${T.name} allowed` : `Max ${T.limit} ${T.name}s` };
     if (b.gold < T.cost) return { ok: false, error: 'Not enough gold' };
     b.gold -= T.cost;
-    const t = { id: b.nextId++, type, col, row, x: col + 0.5, y: row + 0.5, level: 0, cd: 0, target: 'first', stats: GD.towerStats(type, 0) };
+    const t = { id: b.nextId++, type, col, row, x: col + 0.5, y: row + 0.5, level: 0, cd: 0, target: T.defaultTarget || 'first', born: this.round, stats: GD.towerStats(type, 0) };
     b.towers.push(t);
     b.occupied.add(key);
     b.stats.towersBuilt++;
@@ -351,19 +451,32 @@ class Match {
     if (this.round < pack.round) return { ok: false, error: `Unlocks in round ${pack.round}` };
     if ((b.sendReady[pack.id] || 0) > this.time) return { ok: false, error: 'Send on cooldown' };
     if (b.gold < pack.cost) return { ok: false, error: 'Not enough gold' };
-    b.sendReady[pack.id] = this.time + pack.cd;
+    // Slime Hatchery: more slimes per pack, shorter cooldowns, tougher and faster slimes (cost and income unchanged)
+    const nest = b.towers.find((x) => x.stats.kind === 'nest');
+    const ns = nest ? nest.stats : {};
+    // +20% per pack on average: the leftover fraction carries over to the next send of that pack
+    let bonus = 0;
+    if (nest) {
+      b.sendCarry = b.sendCarry || {};
+      const carry = (b.sendCarry[pack.id] || 0) + pack.count * ns.extra;
+      bonus = Math.floor(carry + 1e-9);
+      b.sendCarry[pack.id] = carry - bonus;
+    }
+    const count = pack.count + bonus;
+    b.sendReady[pack.id] = this.time + pack.cd * (ns.cdMul || 1);
     b.gold -= pack.cost;
     b.income += pack.eco;
     b.stats.sentGold += pack.cost;
     const o = this.opp(idx);
-    const hpMul = GD.hpMulForRound(Math.max(1, this.round));
+    const hpMul = GD.hpMulForRound(Math.max(1, this.round)) * (1 + (ns.hpBonus || 0));
     o.sendCursor = Math.max(o.sendCursor, Math.max(0, this.time) + 0.5);
-    for (let i = 0; i < pack.count; i++) {
-      o.queue.push({ t: o.sendCursor, type: pack.enemy, hpMul, sent: true });
+    for (let i = 0; i < count; i++) {
+      o.queue.push({ t: o.sendCursor, type: pack.enemy, hpMul, sent: true, spd: ns.spd });
       o.sendCursor += pack.gap;
     }
     o.queue.sort((a, c) => a.t - c.t);
-    o.events.push(['i', pi]);
+    o.events.push(['i', pi, count]);
+    if (nest) b.events.push(['p', nest.id, bonus]);
     return { ok: true };
   }
 
@@ -458,8 +571,11 @@ class Match {
       income: b.income,
       mine: mineGold,
       cds: GD.SENDS.map((p) => r2(Math.max(0, (b.sendReady[p.id] || 0) - this.time))),
-      towers: b.towers.map((t) => [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target]]),
-      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.slowUntil > this.time ? 1 : 0, e.sent ? 1 : 0, e.hit ? 1 : 0]),
+      // 7th tower field: Storm Jar stored charges, Elder Sapling growth before its cap (the client caps it per level)
+      towers: b.towers.map((t) => [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target],
+        t.stats.kind === 'jar' ? Math.floor(t.charge || 0) : t.stats.growCap ? Math.floor(Math.max(0, this.round - t.born) / t.stats.growEvery) : 0]),
+      // 5th slime field: 1 slowed by Frost, 2 rooted by a Bramble Snare
+      enemies: b.enemies.map((e) => [e.id, EI[e.type], Math.round(e.d * 100), Math.round((e.hp / e.maxHp) * 100), e.rootUntil > this.time ? 2 : e.slowUntil > this.time ? 1 : 0, e.sent ? 1 : 0, e.hit ? 1 : 0]),
       ev: b.events,
     };
   }

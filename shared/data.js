@@ -215,6 +215,108 @@
         { name: 'Storm Core', cost: 1000, desc: '+80% speed, +3 jumps', mul: { rate: 1.8 }, add: { chains: 3 } },
       ],
     },
+    // ----- added later: keep new towers at the end so tower numbers in snapshots stay the same -----
+    lantern: {
+      name: 'Glow Lantern', cost: 200, desc: 'Lights up ghosts so all your towers can hit them.',
+      base: { kind: 'light', range: 2.4 }, // range = light radius; it only attacks after Flare
+      unlock: { coins: 200, level: 2 },
+      upgrades: [
+        { name: 'Bright Wick', cost: 120, desc: 'Bigger light', add: { range: 0.8 } },
+        { name: 'Flare', cost: 280, desc: 'Flares hit ghosts in the light for 2', set: { rate: 0.67, dmg: 2, ghostOnly: true } },
+        { name: 'Lighthouse', cost: 600, desc: '+light, flares hit every slime and ignore armor', add: { range: 1.0 }, set: { ghostOnly: false, pierceArmor: true } },
+      ],
+    },
+    hex: {
+      name: 'Hex Idol', cost: 450, desc: 'Curses the strongest slime for a share of its max HP. Ignores armor.',
+      base: { kind: 'shot', range: 3.2, rate: 0.7, dmg: 1, pct: 0.04, maxHit: 60, pierceArmor: true },
+      defaultTarget: 'strong',
+      unlock: { coins: 800, level: 5 },
+      upgrades: [
+        { name: 'Deeper Hex', cost: 300, desc: '6% of max HP per hex (up to 60)', set: { pct: 0.06 } },
+        { name: 'Quick Chant', cost: 450, desc: '+60% hex speed, +range', mul: { rate: 1.6 }, add: { range: 0.5 } },
+        { name: 'Twin Hex', cost: 900, desc: 'Hexes the 2 strongest slimes', set: { targets: 2 } },
+      ],
+    },
+    bramble: {
+      name: 'Bramble Snare', cost: 220, desc: 'Roots slimes in place for a moment. Extra thorns for Zippy slimes.',
+      base: { kind: 'snare', range: 2.6, rate: 0.9, dmg: 1, fastBonus: 2, root: 0.5, rootGap: 1.5, targets: 1 },
+      unlock: { coins: 300, level: 2 },
+      upgrades: [
+        { name: 'Hooked Thorns', cost: 150, desc: '+1 damage, longer root', add: { dmg: 1 }, set: { root: 0.8 } },
+        { name: 'Twin Vines', cost: 260, desc: 'Roots 2 slimes per shot', set: { targets: 2 } },
+        { name: 'Strangler Thicket', cost: 550, desc: '3 slimes, +40% speed, sees ghosts', set: { targets: 3, detect: true }, mul: { rate: 1.4 } },
+      ],
+    },
+    hatchery: {
+      name: 'Slime Hatchery', cost: 350, desc: 'Does not attack. Your sends get 20% more slimes. Max 1.', limit: 1,
+      base: { kind: 'nest', range: 0, extra: 0.2 },
+      unlock: { coins: 500, level: 3 },
+      upgrades: [
+        { name: 'Warm Nest', cost: 300, desc: 'Send cooldowns 25% shorter', set: { cdMul: 0.75 } },
+        { name: 'Thick Shells', cost: 500, desc: 'Sent slimes +25% HP (rounded)', set: { hpBonus: 0.25 } },
+        { name: 'Royal Brood', cost: 900, desc: 'Sent slimes +40% HP (rounded) and 10% faster', set: { hpBonus: 0.4, spd: 1.1 } },
+      ],
+    },
+    basilisk: {
+      name: 'Basilisk Eye', cost: 340, desc: 'Turns weakened Big Slimes and Knights to stone, so they shatter without splitting.',
+      base: { kind: 'gaze', range: 2.6, rate: 0.8, dmg: 1, execute: 0.25 },
+      unlock: { coins: 500, level: 3 },
+      upgrades: [
+        { name: 'Cold Stare', cost: 200, desc: 'Petrifies below 40% HP', set: { execute: 0.4 } },
+        { name: 'Wide Gaze', cost: 320, desc: '+range, +50% gaze speed', add: { range: 0.8 }, mul: { rate: 1.5 } },
+        { name: 'Medusa Crown', cost: 700, desc: 'Petrifies the King below 12% HP, shatters hit nearby slimes', set: { executeKing: 0.12, shards: 3 } },
+      ],
+    },
+    stormjar: {
+      name: 'Storm Jar', cost: 400, desc: 'Stores lightning while the lane is quiet, then fires it all at once.',
+      base: { kind: 'jar', range: 2.8, rate: 6, dmg: 3, charges: 6, chargeTime: 1.5 }, // rate = how fast stored bolts fire
+      unlock: { coins: 600, level: 4 },
+      upgrades: [
+        { name: 'Bigger Jar', cost: 220, desc: 'Holds 10 charges', set: { charges: 10 } },
+        { name: 'Quick Charge', cost: 380, desc: '1 charge every second', set: { chargeTime: 1.0 } },
+        { name: 'Thunderhead', cost: 850, desc: 'Bolts do 6, ignore armor, see ghosts', set: { dmg: 6, pierceArmor: true, detect: true } },
+      ],
+    },
+    ballista: {
+      name: 'Ballista', cost: 300, desc: 'Its bolt flies straight through several slimes in a row.',
+      base: { kind: 'lance', range: 3.6, rate: 0.55, dmg: 2, pierce: 4 },
+      unlock: { coins: 300, level: 2 },
+      upgrades: [
+        { name: 'Longer Bolts', cost: 180, desc: 'Pierces 7 slimes, +range', set: { pierce: 7 }, add: { range: 0.6 } },
+        { name: 'Iron Tips', cost: 320, desc: '+2 damage per slime', add: { dmg: 2 } },
+        { name: 'Siege Winch', cost: 650, desc: '+70% fire rate, pierces every slime on the line', mul: { rate: 1.7 }, set: { pierce: 99 } },
+      ],
+    },
+    drake: {
+      name: 'Ember Drake', cost: 340, desc: 'Breathes a short cone of fire that burns every slime in front of it.',
+      base: { kind: 'flame', range: 1.8, rate: 2, dmg: 1, cone: 70 },
+      unlock: { coins: 450, level: 3 },
+      upgrades: [
+        { name: 'Big Lungs', cost: 220, desc: '+range, wider cone', add: { range: 0.5 }, set: { cone: 100 } },
+        { name: 'Blue Flame', cost: 400, desc: '+1 damage, ignores armor', add: { dmg: 1 }, set: { pierceArmor: true } },
+        { name: 'Wyrm Heart', cost: 750, desc: '+80% breath speed, sees ghosts', mul: { rate: 1.8 }, set: { detect: true } },
+      ],
+    },
+    goldspitter: {
+      name: 'Goldspitter', cost: 220, desc: 'Hits hard, but every shot costs gold (more in later rounds). Stops when you are broke.',
+      base: { kind: 'coin', range: 2.8, rate: 1, dmg: 5, shotCost: 3 },
+      unlock: { coins: 400, level: 3 },
+      upgrades: [
+        { name: 'Heavy Coins', cost: 220, desc: '+4 damage', add: { dmg: 4 } },
+        { name: 'Ricochet', cost: 380, desc: 'Coins bounce to a 2nd slime, sees ghosts', set: { bounce: 1, detect: true } },
+        { name: 'Golden Hoard', cost: 750, desc: '+70% fire rate, 1 gold less per shot', mul: { rate: 1.7 }, add: { shotCost: -1 } },
+      ],
+    },
+    sapling: {
+      name: 'Elder Sapling', cost: 160, desc: 'Grows stronger every 2 rounds it stays alive. Plant it early.',
+      base: { kind: 'arrow', range: 2.5, rate: 0.9, dmg: 1, growCap: 2, growEvery: 2 },
+      unlock: { coins: 450, level: 3 },
+      upgrades: [
+        { name: 'Deep Roots', cost: 200, desc: 'Can grow to +5, +range', set: { growCap: 5 }, add: { range: 0.4 } },
+        { name: 'Ironbark', cost: 400, desc: 'Can grow to +8, seeds ignore armor', set: { growCap: 8, pierceArmor: true } },
+        { name: 'Ancient Oak', cost: 900, desc: 'Can grow to +12, +50% attack speed', set: { growCap: 12 }, mul: { rate: 1.5 } },
+      ],
+    },
   };
   const TOWER_ORDER = Object.keys(TOWERS);
   const DEFAULT_TOWERS = TOWER_ORDER.filter((t) => TOWERS[t].unlock.coins === 0);
@@ -238,6 +340,10 @@
     return v;
   }
   function sellValue(type, level) { return Math.floor(towerValue(type, level) * RULES.sellRefund); }
+  // Goldspitter: gold per shot, +1 every 8 rounds (server charges it, the tower panel shows it)
+  function shotCost(stats, round) { return Math.max(1, stats.shotCost + Math.floor(Math.max(0, round) / 8)); }
+  // Elder Sapling: +1 damage every growEvery rounds since it was planted, up to growCap
+  function growth(stats, born, round) { return Math.min(stats.growCap, Math.floor(Math.max(0, round - born) / stats.growEvery)); }
 
   // ---------- Sends (attack your opponent, raise your income) ----------
   const SENDS = [
@@ -318,7 +424,7 @@
 
   return {
     COLS, ROWS, RULES, MAPS, posAt, ENEMIES, ENEMY_ORDER, TOWERS, TOWER_ORDER, DEFAULT_TOWERS,
-    TARGET_MODES, towerStats, towerValue, sellValue, SENDS, roundWave, hpMulForRound,
+    TARGET_MODES, towerStats, towerValue, sellValue, shotCost, growth, SENDS, roundWave, hpMulForRound,
     xpForNext, levelInfo, titleFor, SKINS, BANNERS, DEFAULT_COSMETICS, EMOTES, DAILY_WIN_BONUS,
     BUILTIN_MAPS, THEMES, validatePath, registerMap,
   };
