@@ -142,29 +142,33 @@ input {
 .hud-center { text-align: center; }
 .round { font-family: var(--display); font-size: 22px; line-height: 1; }
 .next { font-size: 12px; color: var(--muted); }
-/* tower cards | your lane | their lane + sends, with the selected tower's panel under the sends.
-   Short screens (school laptops, 1366×640) move the panel under the tower cards instead, see below. */
+/* Your lane | slime sends | their lane on top, both lanes the same size; your tower cards | quick sends |
+   the selected tower's panel underneath. The bottom row has a fixed height, so selecting a tower never
+   moves the lanes. #screen-game's max-width (media query below) keeps everything inside the screen height. */
 .arena {
-  display: grid; grid-template-columns: 92px minmax(0, 1fr) 264px; grid-template-rows: auto 1fr;
-  grid-template-areas: "bar main side" "bar main panel"; gap: 10px 12px; align-items: start;
+  --sendw: 128px; --bottom: 140px;
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--sendw) minmax(0, 1fr); grid-template-rows: auto var(--bottom);
+  grid-template-areas: "main sends opp" "bar bulk panel"; gap: 10px 12px; align-items: start;
 }
-#tower-bar { grid-area: bar; }
-#tower-panel { grid-area: panel; }
 .main-wrap { grid-area: main; }
-.side { grid-area: side; }
-.main-wrap { position: relative; align-self: start; }
-#cv-main { width: 100%; aspect-ratio: 16 / 11; display: block; border: 3px solid var(--line); border-radius: 14px; box-shadow: 5px 5px 0 var(--line); cursor: crosshair; background: #3a5a2c; }
-#cv-opp { width: 100%; aspect-ratio: 16 / 11; display: block; border: 3px solid var(--line); border-radius: 12px; opacity: .95; }
-.opp-view { position: relative; }
-.opp-loadout { position: absolute; left: 6px; bottom: 6px; z-index: 3; display: flex; gap: 2px; padding: 2px 3px; background: rgba(30,21,48,.72); border: 2px solid var(--line); border-radius: 8px; }
+.sends { grid-area: sends; }
+.opp-view { grid-area: opp; }
+#tower-bar { grid-area: bar; }
+.send-bulk { grid-area: bulk; }
+#tower-panel { grid-area: panel; }
+.main-wrap, .opp-view { position: relative; }
+#cv-main, #cv-opp { width: 100%; aspect-ratio: 16 / 11; display: block; border: 3px solid var(--line); border-radius: 14px; box-shadow: 5px 5px 0 var(--line); background: #3a5a2c; }
+#cv-main { cursor: crosshair; }
+.opp-loadout { position: absolute; left: 8px; bottom: 8px; z-index: 3; display: flex; gap: 3px; padding: 3px 4px; background: rgba(30,21,48,.72); border: 2px solid var(--line); border-radius: 8px; }
 .opp-loadout span { display: block; line-height: 0; }
-.opp-loadout[data-corner="tl"] { top: 6px; bottom: auto; }
-.opp-loadout[data-corner="br"] { left: auto; right: 6px; }
-.side { display: grid; gap: 10px; align-content: start; }
-.sends { padding: 8px; }
-.sends h3 { margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.sends h3 small { font-weight: 400; color: var(--muted); font-size: 12px; }
-.send-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.opp-loadout[data-corner="tl"] { top: 8px; bottom: auto; }
+.opp-loadout[data-corner="br"] { left: auto; right: 8px; }
+/* the sends column is exactly as tall as the lanes (size containment keeps it from stretching the row);
+   its 9 packs share that height, and switch to one line each when the lanes are short */
+.sends { align-self: stretch; contain: size; container-type: size; display: flex; flex-direction: column; gap: 5px; padding: 6px; }
+.sends h3 { font-size: 13px; text-align: center; }
+.sends h3 small { display: block; font-size: 10px; font-weight: 400; color: var(--muted); }
+.send-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(9, minmax(0, 1fr)); gap: 4px; }
 .send {
   position: relative; display: flex; gap: 4px; align-items: center; line-height: 1.2;
   background: var(--ink-3); border: 2px solid var(--line); border-radius: 10px; padding: 2px 5px 5px 2px; cursor: pointer; overflow: hidden; text-align: left; min-width: 0;
@@ -182,6 +186,13 @@ input {
 .send.poor .scost { color: var(--red); }
 .send:hover:not(:disabled) { filter: brightness(1.15); }
 .scd { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--pink); transform-origin: left; transform: scaleX(0); }
+/* short lanes (width-limited screens like 1024×600): one line per pack, smaller slimes (after the base rules so it wins) */
+@container (max-height: 350px) {
+  .sends h3 small { display: none; }
+  .send { padding: 1px 4px 2px 2px; }
+  .send canvas { width: 18px !important; height: 18px !important; } /* render.js sets the size inline */
+  .send .sinfo { grid-auto-flow: column; justify-content: space-between; gap: 6px; }
+}
 
 .overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; text-align: center; }
 .overlay.big { font-family: var(--display); font-size: 120px; color: var(--text); text-shadow: 0 6px 0 var(--line); }
@@ -189,15 +200,16 @@ input {
 .overlay.hint::first-line { background: rgba(14,9,24,.72); }
 .toasts { position: absolute; left: 50%; bottom: 14px; width: max-content; max-width: 90%; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; pointer-events: none; z-index: 5; }
 .toasts.global { position: fixed; bottom: 22px; }
+.main-wrap > .toasts { bottom: 44px; } /* above the next-wave box */
 .toast { background: var(--ink-2); border: 3px solid var(--line); border-radius: 10px; padding: 6px 14px; font-weight: 600; box-shadow: 3px 3px 0 var(--line); animation: pop .18s ease-out; }
 .toast.bad { border-color: var(--red); }
 .toast.warn { background: var(--pink); color: #2b0a18; }
 .toast.good { background: var(--lime); color: #17260a; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } }
 
-.tower-bar { display: grid; gap: 7px; }
+.tower-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; height: 100%; }
 .tcard {
-  position: relative; display: grid; justify-items: center; gap: 0; padding: 6px 2px 5px; cursor: pointer; line-height: 1.25;
+  position: relative; display: grid; justify-items: center; align-content: center; gap: 0; padding: 6px 2px 5px; cursor: pointer; line-height: 1.25; min-width: 0;
   background: var(--ink-2); border: 3px solid var(--line); border-radius: 12px; box-shadow: 0 4px 0 var(--line);
 }
 .tcard:hover:not(:disabled) { background: var(--ink-3); }
@@ -207,12 +219,24 @@ input {
 .tname { font-weight: 700; font-size: 12px; text-align: center; }
 .tcost { font-size: 13px; color: var(--gold); font-weight: 600; }
 .tcard kbd { position: absolute; top: 4px; left: 6px; font: 600 11px var(--body); color: var(--muted); }
-.tower-panel { padding: 9px 11px; min-height: 120px; font-size: 13px; }
+/* two columns: name, Sell, the upgrade box and targeting | stats */
+.tower-panel { padding: 8px 10px; font-size: 13px; height: 100%; overflow: auto; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 0 12px; align-items: start; }
+.tp-main, .tp-side { min-width: 0; }
+.tower-panel .ph { flex-wrap: nowrap; }
+.tower-panel .ph h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tower-panel .ph .lvl-badge, .tower-panel .ph .btn.sell { flex-shrink: 0; }
+.tower-panel .ph { gap: 6px; }
+.tower-panel .ph h3 { font-size: 16px; }
+.tower-panel .ph .btn.sell { padding: 3px 7px; font-size: 13px; }
+.tower-panel .seg { display: flex; }
+.tower-panel .seg button { flex: 1 1 0; min-width: 0; padding: 3px 0; }
+.tower-panel .desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* full text on hover */
+.tower-panel .tp-side > :first-child { margin-top: 0; }
 .tower-panel .chips { margin: 5px 0 3px; gap: 4px; }
 .tower-panel .chips span { padding: 2px 5px; }
 .tower-panel .chips b { margin-right: 3px; }
 .tower-panel h3 { font-size: 17px; }
-.tower-panel p { margin: 6px 0; }
+.tower-panel p { margin: 4px 0; }
 .tower-panel .hint { font-size: 13px; }
 .ph { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ph h3 { margin-right: auto; }
@@ -225,7 +249,7 @@ input {
 .chips span.chg { box-shadow: inset 0 0 0 1.5px rgba(155,225,93,.5); }
 .chips span.chg i { font-style: normal; color: var(--lime); margin-left: 2px; }
 .tags em.chg { border: 1.5px dashed rgba(155,225,93,.6); border-radius: 6px; padding: 0 4px; }
-.tower-panel .seg button { padding: 3px 7px; font-size: 12px; }
+.tower-panel .seg button { padding: 2px 4px; font-size: 12px; }
 .ups { list-style: none; padding: 0; margin: 4px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .ups li { display: flex; flex-direction: column; gap: 2px; background: var(--ink); border-radius: 10px; padding: 6px 7px; min-width: 0; }
 .ups li b { font-size: 12.5px; line-height: 1.2; }
@@ -255,27 +279,34 @@ input {
 .rewards p { grid-column: 1 / -1; }
 .lvlup { color: var(--gold); font-weight: 700; }
 
-/* keep the whole match visible on short school-PC screens */
+/* keep the whole match visible without scrolling (school laptops are 1366×640):
+   lane height = 100vh - 258px (HUD, bottom row, gaps and padding), lane width = height × 16/11,
+   and the +184px are the sends column, the gaps and the side padding */
 @media (min-width: 981px) {
-  /* canvas height = 100vh - 104px (HUD + padding); the +400px are the side columns, gaps and padding */
-  #screen-game { max-width: clamp(900px, calc((100vh - 104px) * 1.4545 + 400px), 1500px); }
+  #screen-game { max-width: clamp(720px, calc((100vh - 258px) * 2.909 + 184px), 2400px); }
+  /* the 258px include the 140px bottom row; when the width limits the lanes instead (4:3 screens), the bottom row
+     takes some of the spare height: (100vw - 184px) × 11/32 is the lane height there */
+  .arena { --bottom: clamp(140px, calc(100vh - 118px - (100vw - 184px) * 0.34375), 180px); }
+  /* wide screens have height to spare: center the match vertically (auto margins never cut off the top) */
+  #screen-game { display: flex; flex-direction: column; min-height: 100vh; }
+  #screen-game > .hud { margin-top: auto; }
+  #screen-game > .arena { margin-bottom: auto; }
 }
-/* Short screens: the sends and the tower panel don't both fit under their lane, so the panel moves under
-   your tower cards (2×2) into a wider left column. The +100px keep the canvas the same size. */
-@media (min-width: 981px) and (max-height: 829px) {
-  #screen-game { max-width: clamp(900px, calc((100vh - 104px) * 1.4545 + 500px), 1600px); }
-  .arena { grid-template-columns: 192px minmax(0, 1fr) 264px; grid-template-areas: "bar main side" "panel main side"; row-gap: 8px; }
-  .tower-bar { grid-template-columns: 1fr 1fr; gap: 6px; }
-  .tcard { padding: 4px 2px; }
-  .tcard canvas { width: 30px !important; height: 30px !important; } /* smaller icons leave the panel more room */
-}
+/* narrow screens: everything in one column, your lane first */
 @media (max-width: 980px) {
   .lobby-grid { grid-template-columns: 1fr; padding: 12px 16px 32px; }
   .topbar { padding: 14px 16px 4px; }
-  .arena { grid-template-columns: 1fr; grid-template-areas: "main" "bar" "panel" "side"; }
-  .tower-bar { grid-template-columns: repeat(3, 1fr); }
+  .arena { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "main" "bar" "panel" "sends" "bulk" "opp"; } /* same as the markup order */
+  .tower-bar { height: auto; }
+  .tower-panel { height: auto; }
+  .sends { container-type: normal; contain: none; }
+  .send-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none; }
+  .arena .send-bulk { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none; height: auto; } /* .arena: the base rule comes later in the file */
   .hud { grid-template-columns: 1fr 1fr; }
   .hud-center { grid-column: 1 / -1; grid-row: 1; }
+}
+@media (max-width: 560px) {
+  .tower-panel { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
   .play-row { grid-template-columns: 1fr; }
@@ -324,7 +355,7 @@ input {
 .pips { display: inline-flex; gap: 3px; }
 .pips i { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); border: 2px solid var(--line); }
 .pips i.done { background: var(--gold); }
-.tower-panel .seg { margin: 2px 0 6px; }
+.tower-panel .seg { margin: 0; }
 .next-up { display: flex; gap: 8px; align-items: center; justify-content: space-between; background: var(--ink); border-radius: 10px; padding: 7px 8px; }
 .next-up div { display: grid; min-width: 0; }
 .next-up b { font-size: 13px; }
@@ -446,15 +477,14 @@ input {
 .tag.pow { color: var(--gold); }
 
 /* ---------- spectating ---------- */
-.spectating #tower-bar, .spectating .sends, .spectating #btn-chat, .spectating #btn-powers, .spectating #btn-forfeit, .spectating #next-wave { visibility: hidden; }
-.spectating #tower-bar { display: none; } /* on short screens the tower panel moves up to the top of the left column */
-.spectating #btn-chat, .spectating #btn-powers, .spectating #btn-forfeit { display: none; }
+.spectating #tower-bar, .spectating .sends, .spectating .send-bulk, .spectating #btn-chat, .spectating #btn-powers, .spectating #btn-forfeit { display: none; }
+.spectating #next-wave { visibility: hidden; }
 .spectating #cv-main { cursor: default; }
 #btn-stopwatch { color: var(--lime); border-color: var(--lime-d); }
 .spec-count { color: var(--pink); font-weight: 600; }
 .spec-count:empty { display: none; }
 
-.send-bulk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 6px; }
+.send-bulk { display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 6px; height: 100%; }
 .send-bulk button { background: var(--ink); border: 2px solid var(--line); border-radius: 8px; padding: 4px 2px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--pink); }
 .send-bulk button:hover { background: var(--ink-3); }
 .send-bulk kbd { font: 600 10px var(--body); color: var(--muted); margin-left: 2px; }
@@ -480,25 +510,10 @@ input {
 @media (max-width: 900px) { .editor { grid-template-columns: 1fr; } }
 
 /* upgrade box sits right under the header with a fixed height, so the button never jumps */
-.tower-panel .next-up { min-height: 54px; margin: 6px 0 2px; }
-.tower-panel .next-up small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.tower-panel .next-up { height: 65px; min-height: 0; overflow: hidden; } /* fits the name and 2 lines of text */
+.tower-panel .next-up { min-height: 54px; margin: 5px 0 5px; }
+.tower-panel .next-up small { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.tower-panel .next-up { height: 48px; min-height: 0; overflow: hidden; padding: 5px 8px; } /* fits the name and 1 line of text (full text on hover) */
 .tower-panel .next-up b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* in the narrow left column on short screens: name above the level badge and Sell; the upgrade box stacks
-   name, one line of what it does (full text on hover, the chips show each change) and a full-width button.
-   The box keeps its height at MAX too, so nothing moves into the spot where the button was. */
-@media (min-width: 981px) and (max-height: 829px) {
-  .tower-panel { padding: 8px 9px; }
-  .tower-panel .ph { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; }
-  .tower-panel .ph h3 { grid-column: 1 / -1; margin-right: 0; }
-  .tower-panel .ph .btn.sell { justify-self: end; }
-  .tower-panel .next-up { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; align-content: space-between; gap: 2px; height: 82px; padding: 5px 7px; }
-  .tower-panel .ph .btn.sell { padding: 3px 8px; }
-  .tower-panel .next-up small { -webkit-line-clamp: 1; }
-  .tower-panel .next-up .btn.up { width: 100%; min-width: 0; }
-  .tower-panel .seg { display: flex; }
-  .tower-panel .seg button { flex: 1 1 0; min-width: 0; padding: 3px 0; }
-}
 
 /* ---------- tower selection ---------- */
 .pick-overlay { position: fixed; inset: 0; z-index: 15; background: rgba(14, 9, 24, .82); display: grid; place-items: center; padding: 16px; }

@@ -106,7 +106,7 @@
 
   function sizeCanvases() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    for (const [id, k] of [['cv-main', 1], ['cv-opp', 0.5]]) {
+    for (const [id, k] of [['cv-main', 1], ['cv-opp', 1]]) { // both lanes are shown at the same size
       const c = $(id);
       c.width = Math.round(W * k * dpr); c.height = Math.round(H * k * dpr);
     }
@@ -192,7 +192,7 @@
     window.Sfx.play('start');
   }
 
-  // Small icons of the towers your opponent brought, kept on their mini view all match.
+  // Small icons of the towers your opponent brought, kept on their lane all match.
   // Built from the snapshot, so it also appears after a reload or for a spectator who joins late.
   function showOppLoadout(list) {
     const key = list.join(',');
@@ -224,7 +224,7 @@
       el.title = [`${T0.name}: ${T0.desc}`].concat(notes.filter((n) => !T0.desc.includes(n)).map((n) => n + '.')).join(' ');
       el.setAttribute('role', 'img');
       el.setAttribute('aria-label', el.title);
-      el.append(R.towerIcon(type, skin, 18));
+      el.append(R.towerIcon(type, skin, 24));
       box.append(el);
     }
   }
@@ -233,15 +233,16 @@
     const bar = $('tower-bar');
     bar.innerHTML = '';
     let key = 1;
-    // Only the towers brought into this match (your loadout), in the order you picked them
-    G.me.unlocked.filter((t) => GD.TOWERS[t]).forEach((type) => {
+    // Only the towers brought into this match (your loadout), in the order you picked them. Until the pick
+    // ends, unlocked still lists every tower you own, so cap it at the loadout size (the bar has 4 slots).
+    G.me.unlocked.filter((t) => GD.TOWERS[t]).slice(0, GD.RULES.loadoutSize).forEach((type) => {
       const T0 = GD.TOWERS[type];
       const unlocked = true;
       const b = document.createElement('button');
       b.className = 'tcard' + (unlocked ? '' : ' locked');
       b.dataset.type = type;
       b.title = unlocked ? `${T0.name}: ${T0.desc}` : `${T0.name} — unlock it in the shop`;
-      b.append(R.towerIcon(type, G.me.skin, 38));
+      b.append(R.towerIcon(type, G.me.skin, 46));
       const name = document.createElement('span'); name.className = 'tname'; name.textContent = T0.name;
       const cost = document.createElement('span'); cost.className = 'tcost'; cost.textContent = unlocked ? T0.cost : 'Locked';
       b.append(name, cost);
@@ -610,14 +611,16 @@
       G.panelKey = key;
       if (G.placing) {
         const T0 = GD.TOWERS[G.placing];
-        panel.innerHTML = `<h3>${T0.name}</h3><p class="muted">${T0.desc}</p>${statChips(GD.towerStats(G.placing, 0))}
-          <p class="hint">Click a free tile (or move with the arrows and press <kbd>Enter</kbd>) to build for <b class="gold">${T0.cost}</b>. Hold Shift to keep building. Esc cancels.</p>`;
+        // the panel has two columns: what it is | its stats (see .tower-panel in style.css)
+        panel.innerHTML = `<div class="tp-main"><h3>${T0.name}</h3><p class="muted desc" title="${T0.desc}">${T0.desc}</p>
+          <p class="hint">Click a free tile to build for <b class="gold">${T0.cost}</b>. <kbd>Esc</kbd> cancels.</p></div>
+          <div class="tp-side">${statChips(GD.towerStats(G.placing, 0))}<p class="hint"><kbd>Shift</kbd> + click builds several.</p></div>`;
       } else if (tw) {
         const type = GD.TOWER_ORDER[tw[1]], T0 = GD.TOWERS[type], level = tw[4];
         // a spectator sees the watched player's tower read-only: no upgrade preview, sell or targeting buttons
         const next = G.spectator ? null : T0.upgrades[level];
-        const lvlLabel = level >= 3 ? 'Level MAX' : `Level ${level + 1}`;
-        const upHtml = G.spectator ? `<p class="muted">${T0.desc}</p>` : next
+        const lvlLabel = level >= 3 ? 'MAX' : `Level ${level + 1}`;
+        const upHtml = G.spectator ? `<p class="muted desc" title="${T0.desc}">${T0.desc}</p>` : next
           ? `<div class="next-up"><div><b>${next.name}</b><small title="${next.desc}">${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
           : '<div class="next-up maxed"><b>Fully upgraded</b></div>';
         const modeName = (m) => m[0].toUpperCase() + m.slice(1);
@@ -629,19 +632,21 @@
         // Elder Sapling: tw[6] is its growth before the cap; each level caps it (a higher cap pays out at once)
         if (cur.growCap) { cur.dmg += Math.min(cur.growCap, tw[6] || 0); if (nx) nx.dmg += Math.min(nx.growCap, tw[6] || 0); }
         const sell = G.spectator ? '' : `<button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button>`;
-        panel.innerHTML = `<div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span>${sell}</div>
-          ${upHtml}${modes}${statChips(cur, nx)}`;
+        panel.innerHTML = `<div class="tp-main"><div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span>${sell}</div>
+          ${upHtml}${modes}</div><div class="tp-side">${statChips(cur, nx)}</div>`;
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
         const sb = panel.querySelector('[data-act=sell]');
         if (sb) sb.onclick = () => act({ type: 'sell', id: tw[0] });
       } else if (G.spectator) {
-        panel.innerHTML = `<h3>Watching ${esc(G.info.watching)}</h3><p class="muted">You're seeing ${esc(G.info.watching)}'s lane. Their opponent's lane is in the smaller view. Click a tower to see its stats.</p>`;
+        panel.innerHTML = `<div class="tp-main"><h3>Watching ${esc(G.info.watching)}</h3><p class="muted">The first lane is ${esc(G.info.watching)}'s, the other one their opponent's.</p></div>
+          <div class="tp-side"><p class="muted">Click a tower in ${esc(G.info.watching)}'s lane to see its stats.</p></div>`;
       } else {
-        panel.innerHTML = `<h3>Defend your lane</h3><p class="muted">Pick a tower (keys 1–${G.me.unlocked.length}) and click a free tile.
-          Click a placed tower to upgrade or sell it. Sending slimes pressures your opponent and raises your income.</p>
-          <p class="hint">Keyboard: arrows move, <kbd>Enter</kbd> builds or selects, <kbd>U</kbd> upgrade, <kbd>T</kbd> targeting, <kbd>Del</kbd> sell.</p>`;
+        panel.innerHTML = `<div class="tp-main"><h3>Defend your lane</h3><p class="muted">Pick a tower (keys 1–${G.me.unlocked.length}) and click a free tile.
+          Click a placed tower to upgrade or sell it.</p></div>
+          <div class="tp-side"><p class="muted">Sending slimes pressures your opponent and raises your income.</p>
+          <p class="hint">Arrows move, <kbd>Enter</kbd> builds or selects, <kbd>U</kbd> upgrade, <kbd>T</kbd> targeting, <kbd>Del</kbd> sell.</p></div>`;
       }
     }
     // live affordability of the upgrade button: says how much gold is missing
