@@ -116,7 +116,14 @@
     el.innerHTML = '';
     const n = document.createElement('span'); n.className = 'plate-name'; n.textContent = p.name;
     const l = document.createElement('span'); l.className = 'plate-lvl'; l.textContent = p.isBot ? 'Bot' : `Lv ${p.level}` + (G.info.mode === 'pvp' && p.rating ? ` · ${p.rating}` : '');
-    el.append(n, l);
+    el.append(n);
+    const ranked = !!(p.rank && p.rank.text); // custom rank from the admin: a second line with the rank and level
+    el.classList.toggle('has-rank', ranked);
+    if (ranked) {
+      const r = document.createElement('span'); r.className = 'rank-tag r-' + p.rank.color; r.textContent = r.title = p.rank.text;
+      el.append(r);
+    }
+    el.append(l);
   }
 
   function sizeCanvases() {

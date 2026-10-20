@@ -80,6 +80,25 @@ input {
 .plate.big { padding: 14px 16px; flex-direction: column; gap: 2px; }
 .plate.big .plate-name { font-family: var(--display); font-weight: 400; font-size: 26px; }
 .plate.big .plate-lvl { font-size: 14px; }
+/* custom rank from the admin: a small colored tag next to a player's name (the color is one of the presets in progression.js) */
+.rank-tag {
+  display: inline-block; flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: 1px;
+  font: 700 11px/1.45 var(--body); padding: 0 6px; border: 2px solid var(--line); border-radius: 6px; box-shadow: 0 2px 0 var(--line);
+  background: var(--rank); color: var(--ink); text-shadow: none;
+}
+.r-lime { --rank: var(--lime); }
+.r-pink { --rank: var(--pink); }
+.r-gold { --rank: var(--gold); }
+.r-sky { --rank: #6cc7ff; }
+.r-violet { --rank: #b49cff; }
+.r-red { --rank: var(--red); }
+.plate .rank-tag { align-self: center; }
+.plate.big .rank-tag { align-self: flex-start; font-size: 12px; }
+/* narrow plates (match HUD, capped at 220px; shop cards) put the rank on a second line with the level, so the name keeps its room */
+/* (:where keeps this as weak as .hud .plate, so the small-screen rule that hides HUD plates still wins) */
+:where(.hud, .item) .plate.has-rank { display: grid; grid-template-columns: minmax(0, max-content) 1fr; align-items: center; gap: 1px 8px; }
+:where(.hud, .item) .plate.has-rank .plate-name { grid-column: 1 / -1; }
+.hud .plate.has-rank { padding: 4px 10px; }
 
 /* ---------- auth ---------- */
 .auth-wrap { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 24px 16px; }
@@ -406,6 +425,16 @@ input {
 .chk.ban { color: var(--red); font-weight: 600; }
 .ae-inline { display: flex; gap: 8px; }
 .ae-inline input { margin: 0; }
+.admin-list .rank-tag { margin-left: 6px; max-width: 9em; }
+.ae-rank fieldset { display: grid; gap: 8px; }
+.ae-rank .ae-inline input { min-width: 0; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { position: relative; cursor: pointer; }
+.swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.swatch span { display: block; width: 26px; height: 26px; border-radius: 50%; background: var(--rank); border: 3px solid var(--line); box-shadow: 0 2px 0 var(--line); }
+.swatch input:checked + span { outline: 3px solid var(--text); outline-offset: 1px; }
+.swatch input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 1px; }
+.ae-rank-prev { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; min-height: 22px; }
 .btn.danger { background: transparent; color: var(--red); border-color: var(--red); box-shadow: none; justify-self: start; }
 .btn.danger.armed { background: var(--red); color: #2b0a0a; }
 @media (max-width: 900px) { .admin-grid { grid-template-columns: 1fr; } .ae-nums { grid-template-columns: repeat(2, 1fr); } }
@@ -444,7 +473,9 @@ input {
 .friend-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 210px; overflow: auto; }
 .friend-list li { display: grid; grid-template-columns: 10px 1fr auto auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--ink-2); }
 .friend-list li.empty { display: block; background: none; padding: 2px 0; font-size: 13px; }
-.friend-list .fname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-list .fname { font-weight: 600; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.friend-list .fname > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-list .fname .rank-tag { max-width: 60%; flex-shrink: 0; }
 .friend-list small { color: var(--muted); font-size: 12px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: #5e5577; }
 .st-online .dot { background: var(--lime); box-shadow: 0 0 6px var(--lime); }

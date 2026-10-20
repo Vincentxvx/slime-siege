@@ -75,7 +75,7 @@ GAME_SPEED=10 npm start  &&  npm run test:e2e -- http://localhost:3000
 ## Data model
 
 Postgres tables (auto-created): `users(id, name_lower unique, doc jsonb, updated_at)` and `meta(key, value jsonb)`.
-User `doc` fields: `id, username, passHash, createdAt, xp, coins, wins, losses, botWins, games, bestRound, unlocked[], owned[] (cosmetics), skin, banner, history[] (last 10), lastDailyWin, rating, banned, ideasAccess, cheatAccess, mapAccess, friends[], friendIn[], friendOut[]`.
+User `doc` fields: `id, username, passHash, createdAt, xp, coins, wins, losses, botWins, games, bestRound, unlocked[], owned[] (cosmetics), skin, banner, history[] (last 10), lastDailyWin, rating, banned, ideasAccess, cheatAccess, mapAccess, friends[], friendIn[], friendOut[], rank ({ text, color }, optional)`.
 Old docs may lack newer fields — always default (`u.rating || 1000`, `u.friends || []`, …).
 `meta` keys: `ideas` (ideas box list), `maps` (custom maps).
 Both stores cache user docs in memory; the single server process is the only writer. Mutate the cached object, then `store.save(u)`.
@@ -101,7 +101,7 @@ Accounts; quick match; private rooms with map choice; bots with map choice; rema
 
 Test field (admins and players with Powers access, lobby box "Test field"): a `sandbox` match (`mode: 'sandbox'`, `Match({ sandbox: { cols, rows } })`, map from `GD.sandboxMap`, never registered in `GD.MAPS`) on a board of any size within `GD.SANDBOX` (4–32 × 4–24). Player 0 is alone (player 1 is an `idle` placeholder, no Bot), has every tower, endless gold and no placing limits (no Gold Mine/Hatchery caps, no 60-tower cap; real matches keep theirs, decided 2026-10-21); no rounds, the round number only sets slime HP. Slimes placed by hand (`slime` action, palette keys QWEASDZ) stand still (`e.still`), respawn after 1 s if enabled, split into standing children; the `sandbox` action sets respawn/round/clear/resetDamage. Towers count the damage they deal (`t.dealt` via `curTower` in `updateBoard`). Snapshot extras in a test field only: tower fields 9–10 = damage dealt, seconds counted; standing slime fields 8–10 = x×100, y×100, HP. Leaving gives nothing and records nothing; friends can't spectate it. Every map now has `cols`/`rows` (default `COLS`/`ROWS`): use them, not `GD.COLS`, for bounds.
 
-Admin (only `ADMIN_USERS`): Admin tab (edit coins/XP/level/rating/stats, unlock items, ban/unban with live kick, reset password, delete account, give coins to all, grant per-user access to: Ideas box, in-game Powers, Map editor); in-match Powers menu (gold, lives, income, spawn any slime for either side, next round, max tower, clear lane); Ideas box (players with access post/upvote; admin sets New/Planned/Done/Not doing). Every admin action is logged as `[admin] …`.
+Admin (only `ADMIN_USERS`): Admin tab (edit coins/XP/level/rating/stats, unlock items, ban/unban with live kick, reset password, delete account, give coins to all, grant per-user access to: Ideas box, in-game Powers, Map editor; set a custom rank: a short tag in one of 6 preset colors, `RANK_COLORS`/`cleanRank` in progression.js, shown next to the name on every plate, the leaderboard and friends list); in-match Powers menu (gold, lives, income, spawn any slime for either side, next round, max tower, clear lane); Ideas box (players with access post/upvote; admin sets New/Planned/Done/Not doing). Every admin action is logged as `[admin] …`.
 
 ## Conventions
 

@@ -78,14 +78,18 @@
     connect();
   }
 
-  function plate(el, name, banner, sub) {
+  // custom rank from the admin ({ text, color } or null): a small colored tag next to the name
+  const rankTag = (r) => (r && r.text ? `<span class="rank-tag r-${esc(r.color)}" title="${esc(r.text)}">${esc(r.text)}</span>` : '');
+
+  function plate(el, name, banner, sub, rank) {
     el.style.background = (GD.BANNERS[banner] || GD.BANNERS.banner_slate).css;
-    el.innerHTML = `<span class="plate-name">${esc(name)}</span><span class="plate-lvl">${esc(sub)}</span>`;
+    el.innerHTML = `<span class="plate-name">${esc(name)}</span>${rankTag(rank)}<span class="plate-lvl">${esc(sub)}</span>`;
+    el.classList.toggle('has-rank', !!(rank && rank.text));
   }
 
   function renderProfile() {
     const p = S.profile;
-    plate($('profile-plate'), p.username, p.banner, `Level ${p.level} ${p.title}`);
+    plate($('profile-plate'), p.username, p.banner, `Level ${p.level} ${p.title}`, p.rank);
     $('xp-fill').style.transform = `scaleX(${p.xpInto / p.xpNeed})`;
     $('xp-text').textContent = `${p.xpInto} / ${p.xpNeed} XP to level ${p.level + 1}`;
     $('coins').textContent = p.coins;
@@ -157,7 +161,7 @@
           const li = document.createElement('li');
           if (x.username === p.username) li.className = 'me';
           const pl = document.createElement('div'); pl.className = 'plate';
-          plate(pl, x.username, x.banner, 'Lv ' + x.level);
+          plate(pl, x.username, x.banner, 'Lv ' + x.level, x.rank);
           const wl = document.createElement('span'); wl.className = 'wl'; wl.innerHTML = `<b class="rating" title="Rating">${x.rating}</b> <b>${x.wins}</b> W <b>${x.losses}</b> L`;
           li.append(pl, wl);
           ol.append(li);
@@ -192,7 +196,7 @@
       for (const id in GD.BANNERS) {
         const k = GD.BANNERS[id];
         const pl = document.createElement('div'); pl.className = 'plate';
-        plate(pl, p.username, id, k.name);
+        plate(pl, p.username, id, k.name, p.rank);
         const card = item(pl, k.name, 'Your name plate in the lobby, matches and leaderboard.');
         card.append(buyButton(id, k.cost, k.level, p.owned.includes(id), p.banner === id));
         grid.append(card);
@@ -395,6 +399,7 @@
     try { data = await api('/api/admin/overview'); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
     if (S.tab !== 'admin') return;
     S.adminUsers = data.users;
+    S.rankColors = data.rankColors; S.rankMax = data.rankMax;
     body.innerHTML = `
       <div class="admin-top">
         <div class="admin-stats"><span><b>${data.players}</b> players</span><span><b>${data.online}</b> online</span><span><b>${data.matches}</b> matches running</span></div>
@@ -410,7 +415,7 @@
     const rows = () => {
       const q = $('admin-search').value.trim().toLowerCase();
       $('admin-rows').innerHTML = S.adminUsers.filter((u) => u.username.toLowerCase().includes(q)).map((u) =>
-        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.cheatAccess && !u.admin ? ' <em class="tag pow">powers</em>' : ''}${u.mapAccess && !u.admin ? ' <em class="tag idea">maps</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
+        `<tr data-id="${u.id}" class="${u.id === S.adminSel ? 'sel' : ''}"><td>${esc(u.username)}${rankTag(u.rank)}${u.admin ? ' <em class="tag">admin</em>' : ''}${u.ideasAccess && !u.admin ? ' <em class="tag idea">ideas</em>' : ''}${u.cheatAccess && !u.admin ? ' <em class="tag pow">powers</em>' : ''}${u.mapAccess && !u.admin ? ' <em class="tag idea">maps</em>' : ''}${u.banned ? ' <em class="tag bad">banned</em>' : ''}</td>` +
         `<td>${u.level}</td><td>${u.coins}</td><td>${u.rating}</td><td>${u.wins}–${u.losses}</td></tr>`).join('') ||
         '<tr><td colspan="5" class="muted">No players match.</td></tr>';
     };
@@ -440,6 +445,16 @@
       `<label class="chk"><input type="checkbox" name="${name}" value="${id}" ${owned.includes(id) ? 'checked' : ''} ${locked.includes(id) ? 'disabled' : ''}>${esc(labelOf(id))}</label>`).join('');
     box.innerHTML = `
       <div class="ae-head"><h4>${esc(u.username)}</h4><span class="muted small">Joined ${new Date(u.createdAt).toLocaleDateString()}</span></div>
+      <form id="ae-rank" class="ae-rank"><fieldset><legend>Rank</legend>
+        <div class="ae-inline">
+          <input type="text" name="text" maxlength="${S.rankMax}" placeholder="No rank" value="${esc(u.rank ? u.rank.text : '')}" autocomplete="off" aria-label="Rank text">
+          <button class="btn" type="submit">Set rank</button>
+          ${u.rank ? '<button class="btn ghost" type="button" id="ae-rank-remove">Remove</button>' : ''}
+        </div>
+        <div class="swatches" role="radiogroup" aria-label="Rank color">${Object.keys(S.rankColors).map((c) =>
+          `<label class="swatch" title="${esc(S.rankColors[c])}"><input type="radio" name="color" value="${esc(c)}" aria-label="${esc(S.rankColors[c])}" ${c === (u.rank ? u.rank.color : 'lime') ? 'checked' : ''}><span class="r-${esc(c)}"></span></label>`).join('')}</div>
+        <span class="ae-rank-prev" id="ae-rank-prev"></span>
+      </fieldset></form>
       <form id="ae-form">
         <div class="ae-nums">
           ${num('coins', 'Coins')}
@@ -488,6 +503,25 @@
         if (isMe) { S.profile = (await api('/api/me')).profile; renderProfile(); }
       } catch (err) { toast(err.message, 'bad'); }
     };
+    const rf = $('ae-rank');
+    const preview = () => {
+      const text = rf.text.value.trim();
+      $('ae-rank-prev').innerHTML = text ? 'Preview ' + rankTag({ text, color: rf.color.value }) : '<span class="muted small">Leave it empty for no rank.</span>';
+    };
+    rf.oninput = rf.onchange = preview;
+    preview();
+    const setRank = async (text) => {
+      try {
+        const r = await api(`/api/admin/user/${u.id}/rank`, { text, color: rf.color.value });
+        Object.assign(u, r.user);
+        refreshRows();
+        adminEditor(u, refreshRows);
+        toast(u.rank ? `${u.username} is now "${u.rank.text}"` : `Removed the rank of ${u.username}`, 'good');
+        if (isMe) { S.profile = (await api('/api/me')).profile; renderProfile(); }
+      } catch (err) { toast(err.message, 'bad'); }
+    };
+    rf.onsubmit = (e) => { e.preventDefault(); setRank(rf.text.value); };
+    if ($('ae-rank-remove')) $('ae-rank-remove').onclick = () => setRank('');
     $('ae-pass').onsubmit = async (e) => {
       e.preventDefault();
       try { await api(`/api/admin/user/${u.id}/password`, { password: e.target.password.value }); e.target.reset(); toast('Password changed', 'good'); }
@@ -597,12 +631,12 @@
     const rows = d.friends.map((f) => `
       <li data-id="${f.id}" class="st-${f.status}">
         <span class="dot" aria-hidden="true"></span>
-        <span class="fname">${esc(f.username)}</span>
+        <span class="fname"><span>${esc(f.username)}</span>${rankTag(f.rank)}</span>
         <small>${STATUS_LABEL[f.status]}</small>
         ${f.status === 'online' ? '<button class="btn primary small-btn" data-f="invite">Invite</button>' : f.status === 'playing' ? '<button class="btn small-btn" data-f="watch">Watch</button>' : ''}
         <button class="fx" data-f="remove" title="Remove friend" aria-label="Remove ${esc(f.username)}">×</button>
       </li>`).concat(d.outgoing.map((o) => `
-      <li data-id="${o.id}" class="st-pending"><span class="dot" aria-hidden="true"></span><span class="fname">${esc(o.username)}</span><small>Request sent</small>
+      <li data-id="${o.id}" class="st-pending"><span class="dot" aria-hidden="true"></span><span class="fname"><span>${esc(o.username)}</span></span><small>Request sent</small>
         <button class="fx" data-f="cancel" title="Cancel request" aria-label="Cancel request to ${esc(o.username)}">×</button></li>`));
     $('friend-list').innerHTML = rows.join('') || '<li class="empty muted">Add friends by username to see when they are online and invite them.</li>';
   }

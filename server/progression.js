@@ -25,13 +25,35 @@ function newUser(username, passHash) {
   };
 }
 
+// Custom ranks the admin gives players: a short tag shown next to their name, in one of these colors
+// (CSS classes .r-<id>). Stored as u.rank = { text, color }; old docs have none.
+const RANK_COLORS = { lime: 'Lime', pink: 'Pink', gold: 'Gold', sky: 'Sky blue', violet: 'Violet', red: 'Red' };
+const RANK_MAX = 16;
+
+function rankOf(u) {
+  const r = u && u.rank;
+  return r && r.text && RANK_COLORS[r.color] ? { text: r.text, color: r.color } : null;
+}
+
+// Admin input → { rank } (null = remove it) or { error }
+function cleanRank(text, color) {
+  text = String(text == null ? '' : text).normalize('NFC').trim().replace(/\s+/g, ' ');
+  if (!text) return { rank: null };
+  if ([...text].length > RANK_MAX) return { error: `Keep the rank to ${RANK_MAX} characters` };
+  if (!/^[\p{L}\p{N} .,!?'&+#:()\/-]+$/u.test(text) || !/[\p{L}\p{N}]/u.test(text)) {
+    return { error: 'Use letters, numbers, spaces and simple punctuation' };
+  }
+  if (!RANK_COLORS[color]) return { error: 'Pick one of the rank colors' };
+  return { rank: { text, color } };
+}
+
 function publicProfile(u) {
   const li = GD.levelInfo(u.xp);
   return {
     id: u.id, username: u.username, xp: u.xp, level: li.level, xpInto: li.into, xpNeed: li.need,
     title: GD.titleFor(li.level), coins: u.coins, wins: u.wins, losses: u.losses, botWins: u.botWins,
     games: u.games, bestRound: u.bestRound, unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner,
-    history: u.history || [], dailyAvailable: u.lastDailyWin !== today(), rating: u.rating || 1000,
+    history: u.history || [], dailyAvailable: u.lastDailyWin !== today(), rating: u.rating || 1000, rank: rankOf(u),
     isAdmin: isAdminName(u.username),
     ideas: isAdminName(u.username) || !!u.ideasAccess,
     powers: isAdminName(u.username) || !!u.cheatAccess,
@@ -40,7 +62,7 @@ function publicProfile(u) {
 }
 
 function leaderboardEntry(u) {
-  return { username: u.username, level: GD.levelInfo(u.xp).level, wins: u.wins, losses: u.losses, banner: u.banner, rating: u.rating || 1000 };
+  return { username: u.username, level: GD.levelInfo(u.xp).level, wins: u.wins, losses: u.losses, banner: u.banner, rating: u.rating || 1000, rank: rankOf(u) };
 }
 
 // Elo: rating change for player A given A's score (1 win, 0.5 draw, 0 loss)
@@ -124,4 +146,4 @@ function equip(u, id) {
   return null;
 }
 
-module.exports = { eloDelta, newUser, publicProfile, leaderboardEntry, applyResult, buy, equip };
+module.exports = { eloDelta, newUser, publicProfile, leaderboardEntry, applyResult, buy, equip, RANK_COLORS, RANK_MAX, rankOf, cleanRank };
