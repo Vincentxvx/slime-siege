@@ -240,6 +240,7 @@
       if (!T0) continue;
       // when each counter arrives: "Sees ghosts", "... from level 3" or "... when fully upgraded"
       const notes = [];
+      // (with upgrade paths: the earliest level on either path, naming the path when only one gets it)
       for (const [flag, text] of [['detect', 'Sees ghosts'], ['pierceArmor', 'Ignores armor']]) {
         const max = T0.upgrades.length;
         const at = (p) => { let l = 0; while (l <= max && !GD.towerStats(type, l, p)[flag]) l++; return l > max ? null : l; };
@@ -248,7 +249,6 @@
         if (lvl == null) continue;
         const via = T0.branch && lvl > GD.FORK && la !== lb ? ` (${GD.upgradeList(type, lvl === la ? 'a' : 'b')[GD.FORK].name} path)` : '';
         notes.push((lvl === 0 ? text : lvl === max ? `${text} when fully upgraded` : `${text} from level ${lvl + 1}`) + via);
-      // (with upgrade paths: the earliest level on either path, naming the path when only one gets it)
       }
       const el = document.createElement('span');
       el.title = [`${T0.name}: ${T0.desc}`].concat(notes.filter((n) => !T0.desc.includes(n)).map((n) => n + '.')).join(' ');

@@ -494,6 +494,12 @@ input {
 
 .lvl-badge { font-size: 12px; font-weight: 700; background: var(--ink); color: var(--lime); border-radius: 6px; padding: 1px 7px; white-space: nowrap; }
 .lvl-badge.max { background: var(--gold); color: #2b1d00; }
+.lvl-badge.path-b { box-shadow: inset 0 0 0 2px #a68bff; } /* the tower took upgrade path B */
+/* upgrade path fork: the two choices side by side, each its name and price (details on hover; U = left, I = right) */
+.next-up.fork { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 4px; }
+.next-up.fork .btn.up.path { min-width: 0; width: 100%; height: 100%; display: grid; grid-template-rows: auto auto; align-content: center; gap: 0; padding: 2px 6px; line-height: 1.15; }
+.next-up.fork .btn.up.path span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.next-up.fork .btn.up.path b { font-size: 13px; }
 
 /* ---------- admin powers in match ---------- */
 .powers-btn { color: var(--gold); border-color: #6b5a1d; }
@@ -520,12 +526,6 @@ input {
 .send-bulk button:hover { background: var(--ink-3); }
 .send-bulk kbd { font: 600 10px var(--body); color: var(--muted); margin-left: 2px; }
 .overlay.hint { color: #fff; text-shadow: 0 2px 0 var(--line), 0 0 6px rgba(14,9,24,.8); }
-.lvl-badge.path-b { box-shadow: inset 0 0 0 2px #a68bff; } /* the tower took upgrade path B */
-/* upgrade path fork: the two choices side by side, each its name and price (details on hover; U = left, I = right) */
-.next-up.fork { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 4px; }
-.next-up.fork .btn.up.path { min-width: 0; width: 100%; height: 100%; display: grid; grid-template-rows: auto auto; align-content: center; gap: 0; padding: 2px 6px; line-height: 1.15; }
-.next-up.fork .btn.up.path span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.next-up.fork .btn.up.path b { font-size: 13px; }
 
 /* ---------- map choice + editor ---------- */
 .map-pick { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 4px; }
