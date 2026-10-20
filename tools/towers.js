@@ -1,5 +1,6 @@
-// Headless tower test: every tower at every level against real slimes, plus the special rules of the
-// newer towers (ghost light, roots, petrify, piercing, cones, gold per shot, charges, growth, hatchery sends).
+// Headless tower test: every tower at every level (and on both upgrade paths) against real slimes, plus the
+// special rules of the newer towers (ghost light, roots, petrify, piercing, cones, gold per shot, charges, growth,
+// hatchery sends) and of the path B upgrades (armor-piercing arrows, slowing blasts, brittle, two-target shots).
 // Usage: node tools/towers.js   (exits with code 1 if anything fails)
 const GD = require('../shared/data');
 const { Match, DT } = require('../server/game/match');
@@ -17,10 +18,10 @@ function match(towers) {
   return m;
 }
 const act = (m, a) => m.handleAction(0, a);
-const place = (m, tower, col, row, level = 0) => {
+const place = (m, tower, col, row, level = 0, path = 'a') => {
   const r = act(m, { type: 'place', tower, col, row });
   if (!r.ok) throw new Error(`place ${tower}: ${r.error}`);
-  for (let i = 0; i < level; i++) act(m, { type: 'upgrade', id: r.id });
+  for (let i = 0; i < level; i++) act(m, { type: 'upgrade', id: r.id, path });
   return m.boards[0].towers.find((t) => t.id === r.id);
 };
 // spawn slimes on player 0's board, spread along the path in front of the towers
@@ -33,21 +34,25 @@ const spawn = (m, type, n, from = 2, step = 0.6) => {
 const run = (m, seconds) => { for (let i = 0; i < seconds / DT; i++) { m.tick(); m.boards[0].lives = 1e6; } };
 const hpLeft = (m) => m.boards[0].enemies.reduce((s, e) => s + e.hp, 0);
 
-// 1. Every tower at every level fights a mixed group without crashing, and attacking towers deal damage
+// 1. Every tower at every level (both paths where it has two) fights a mixed group without crashing,
+//    and attacking towers deal damage
 for (const type of GD.TOWER_ORDER) {
-  for (let level = 0; level <= GD.TOWERS[type].upgrades.length; level++) {
+  for (const path of GD.TOWERS[type].branch ? ['a', 'b'] : ['a']) for (let level = 0; level <= GD.TOWERS[type].upgrades.length; level++) {
+    if (path === 'b' && level <= GD.FORK) continue; // same as path a until the fork
+    const name = `${type} level ${level + 1}${path === 'b' ? ' (path B)' : ''}`;
     try {
       const m = match([type]);
-      const t = place(m, type, 5, 4, level);
+      const t = place(m, type, 5, 4, level, path);
+      ok(t.level === level && (level <= GD.FORK || (t.path || 'a') === path), `${name} built`);
       t.charge = t.stats.charges || 0;
       spawn(m, 'green', 4); spawn(m, 'blue', 3, 5); spawn(m, 'purple', 2, 7); spawn(m, 'armored', 1, 9); spawn(m, 'ghost', 2, 10);
       const before = hpLeft(m);
       run(m, 6);
       const attacks = !!t.stats.rate && !t.stats.ghostOnly && (t.stats.dmg > 0 || !!t.stats.pct); // early Frost only slows
-      if (attacks) ok(m.boards[0].stats.kills > 0 || hpLeft(m) < before, `${type} level ${level + 1} deals damage`);
-      else ok(true, `${type} level ${level + 1} runs (does not attack)`);
+      if (attacks) ok(m.boards[0].stats.kills > 0 || hpLeft(m) < before, `${name} deals damage`);
+      else ok(true, `${name} runs (does not attack)`);
       m.emitSnapshots();
-    } catch (e) { ok(false, `${type} level ${level + 1} crashed: ${e.stack}`); }
+    } catch (e) { ok(false, `${name} crashed: ${e.stack}`); }
   }
 }
 
@@ -164,6 +169,70 @@ for (const type of GD.TOWER_ORDER) {
   ok(m.boardSnap(m.boards[0]).towers[0][6] === 5, 'growth is in the snapshot');
   const [k] = spawn(m, 'blue', 1, 4); k.hp = k.maxHp = 100; for (let i = 0; i < 25; i++) m.tick();
   ok(k.hp === 100 - 6 || k.hp === 100 - 12, `a grown seed hits for 1 + 5 (hp ${k.hp})`);
+}
+
+// 12. Upgrade paths (Archer, Cannon, Frost, Sniper): the fork, costs, sell value, snapshot, and each path B rule
+{
+  const m = match(['archer']);
+  const t = place(m, 'archer', 5, 4, 1);
+  const b = m.boards[0], gold = b.gold;
+  ok(act(m, { type: 'upgrade', id: t.id, path: 'b' }).ok && t.path === 'b' && gold - b.gold === GD.TOWERS.archer.branch[0].cost, 'the fork takes path B at its price');
+  act(m, { type: 'upgrade', id: t.id, path: 'a' });
+  ok(t.level === 3 && t.path === 'b' && t.stats.dmg === GD.towerStats('archer', 3, 'b').dmg, 'later upgrades stay on the chosen path');
+  ok(m.boardSnap(b).towers[0][7] === 1, 'path B is in the snapshot');
+  const g2 = b.gold; act(m, { type: 'sell', id: t.id });
+  ok(b.gold - g2 === GD.sellValue('archer', 3, 'b'), 'selling refunds what path B cost');
+  const t2 = place(m, 'archer', 6, 4, 1);
+  act(m, { type: 'upgrade', id: t2.id }); // bots and old clients send no path
+  ok(t2.path === 'a' && t2.stats.rate === GD.towerStats('archer', 2).rate, 'no path given means path A');
+  const t3 = place(m, 'archer', 7, 4, 1);
+  ok(m.handleAction(0, { type: 'upgrade', id: t3.id, path: { toString: 1 } }).ok && t3.path === 'a', 'a strange path value means path A');
+  ok(GD.upgradeList('mine', 'b') === GD.TOWERS.mine.upgrades, 'towers without a branch ignore path B');
+}
+{ // Archer path B pierces armor: Bodkin Points hurts a Knight, Quick Draw (2 damage vs armor 2) does not
+  const hit = (path) => { const m = match(['archer']); place(m, 'archer', 5, 4, 2, path); const [k] = spawn(m, 'armored', 1, 4); k.hp = k.maxHp = 100; run(m, 2); return 100 - k.hp; };
+  ok(hit('a') === 0 && hit('b') > 0, `Bodkin Points pierces armor (A ${hit('a')}, B ${hit('b')})`);
+}
+{ // Cannon path B: blasts slow
+  const m = match(['cannon']); place(m, 'cannon', 5, 4, 2, 'b');
+  const [s1] = spawn(m, 'purple', 1, 4); s1.hp = s1.maxHp = 500; run(m, 2);
+  ok(s1.slowUntil > m.time && Math.abs(s1.slowAmt - 0.3) < 1e-9, 'Concussion Shells slow 30%');
+  const m2 = match(['cannon']); place(m2, 'cannon', 5, 4, 2, 'a');
+  const [s2] = spawn(m2, 'purple', 1, 4); s2.hp = s2.maxHp = 500; run(m2, 2);
+  ok(!(s2.slowUntil > m2.time), 'Rapid Reload does not slow');
+}
+{ // Frost path B: slimes it pulses take +30% from every tower (after armor)
+  const shot = (frostPath) => {
+    const m = match(['frost', 'sniper']);
+    if (frostPath) place(m, 'frost', 5, 4, 2, frostPath);
+    const [s] = spawn(m, 'blue', 1, 4); s.hp = s.maxHp = 1000;
+    for (let i = 0; i < 30; i++) m.tick(); // let the frost pulse
+    const before = s.hp; // (Frostbite deals damage of its own)
+    m.damage(m.boards[0], s, 10, false);
+    return before - s.hp;
+  };
+  ok(shot(null) === 10 && shot('a') === 10 && Math.abs(shot('b') - 13) < 1e-9, `Brittle Ice: +30% damage taken (${shot('b')})`);
+}
+{ // a weaker slow (Cannon B 30%) doesn't keep a stronger one (Deep Freeze 60%) running
+  const m = match(['cannon']); const [e] = spawn(m, 'purple', 1, 4);
+  m.applySlow(e, 0.6, 1.5); const until = e.slowUntil;
+  for (let i = 0; i < 10; i++) { m.tick(); m.applySlow(e, 0.3, 1.5); }
+  ok(e.slowUntil === until && e.slowAmt === 0.6, 'a weaker slow does not extend a stronger one');
+  for (let i = 0; i < 40; i++) m.tick();
+  m.applySlow(e, 0.3, 1.5);
+  ok(e.slowAmt === 0.3, 'once the strong slow ends, the weaker one applies');
+}
+{ // brittle hits are fractional, but nothing survives on float crumbs: 13 HP, five 2-damage hits at +30%
+  const m = match(['frost']); const [e] = spawn(m, 'blue', 1, 4); e.hp = e.maxHp = 13;
+  e.brittle = 0.3; e.brittleUntil = 1e9;
+  for (let i = 0; i < 5; i++) m.damage(m.boards[0], e, 2, false);
+  ok(e.dead, 'five brittle 2.6 hits kill a 13 HP slime');
+}
+{ // Sniper path B: Twin Scopes hits two slimes per shot
+  const m = match(['sniper']); const t = place(m, 'sniper', 5, 4, 3, 'b');
+  const two = spawn(m, 'blue', 2, 4, 1); two.forEach((e) => { e.hp = e.maxHp = 1000; });
+  t.cd = 0; for (let i = 0; i < 2; i++) m.tick();
+  ok(two.every((e) => e.hp < 1000), 'Twin Scopes hits 2 slimes with one shot');
 }
 
 console.log(failed ? `\n${failed} FAILED` : '\nALL PASSED');

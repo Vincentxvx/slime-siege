@@ -12,6 +12,9 @@
     placing: null, hover: null, selected: null,
     effects: [], aim: [{}, {}], hits: [new Map(), new Map()], anim: [new Map(), new Map()], cdFull: {}, cdLast: {}, built: false, panelKey: '', lastRound: -1,
   };
+  // a tower tuple's upgrade path (8th field) and its stats on that path
+  const twPath = (tw) => (tw[7] === 1 ? 'b' : 'a');
+  const twStats = (tw) => GD.towerStats(GD.TOWER_ORDER[tw[1]], tw[4], twPath(tw));
   const HIT_FLASH = 0.16; // seconds a slime flashes white after losing HP
   const HIT_GAP = 0.33;   // at most ~3 flashes per second per slime
   const DROP = 0.18;      // seconds a new tower takes to drop onto its tile
@@ -231,10 +234,14 @@
       // when each counter arrives: "Sees ghosts", "... from level 3" or "... when fully upgraded"
       const notes = [];
       for (const [flag, text] of [['detect', 'Sees ghosts'], ['pierceArmor', 'Ignores armor']]) {
-        let lvl = 0;
-        while (lvl <= T0.upgrades.length && !GD.towerStats(type, lvl)[flag]) lvl++;
-        if (lvl > T0.upgrades.length) continue;
-        notes.push(lvl === 0 ? text : lvl === T0.upgrades.length ? `${text} when fully upgraded` : `${text} from level ${lvl + 1}`);
+        const max = T0.upgrades.length;
+        const at = (p) => { let l = 0; while (l <= max && !GD.towerStats(type, l, p)[flag]) l++; return l > max ? null : l; };
+        const la = at('a'), lb = T0.branch ? at('b') : null;
+        const lvl = la == null ? lb : lb == null ? la : Math.min(la, lb);
+        if (lvl == null) continue;
+        const via = T0.branch && lvl > GD.FORK && la !== lb ? ` (${GD.upgradeList(type, lvl === la ? 'a' : 'b')[GD.FORK].name} path)` : '';
+        notes.push((lvl === 0 ? text : lvl === max ? `${text} when fully upgraded` : `${text} from level ${lvl + 1}`) + via);
+      // (with upgrade paths: the earliest level on either path, naming the path when only one gets it)
       }
       const el = document.createElement('span');
       el.title = [`${T0.name}: ${T0.desc}`].concat(notes.filter((n) => !T0.desc.includes(n)).map((n) => n + '.')).join(' ');
@@ -426,7 +433,7 @@
           G.aim[bi][ev[1]] = Math.atan2(ev[3] * T - ty, ev[2] * T - tx);
           const f = { b: bi, k: st ? st.k : ev[0], x1: tx, y1: ty, x2: ev[2] * T, y2: ev[3] * T, t0: t, dur: st ? st.dur : ev[0] === 'a' ? 0.12 : 0.08 };
           if (st && st.color) { f.color = st.color; f.width = st.width; }
-          if (type === 'drake') { const s = GD.towerStats(type, tw[4]); f.r = s.range * T; f.half = (s.cone * Math.PI) / 360; f.blue = tw[4] >= 2; }
+          if (type === 'drake') { const s = twStats(tw); f.r = s.range * T; f.half = (s.cone * Math.PI) / 360; f.blue = tw[4] >= 2; }
           G.effects.push(f);
           break;
         }
@@ -447,7 +454,7 @@
             break;
           }
           if (bi === G.you) window.Sfx.play('pulse');
-          const range = tw ? GD.towerStats(type, tw[4]).range : 2;
+          const range = tw ? twStats(tw).range : 2;
           G.effects.push({ b: bi, k: 'p', x1: tx, y1: ty, r: range * T, color: type === 'lantern' ? '255,214,110' : null, t0: t, dur: 0.4 });
           break;
         }
@@ -537,7 +544,7 @@
       if (curB.tmap.has(old[0])) continue;
       const x = (old[2] + 0.5) * T, y = (old[3] + 0.5) * T;
       G.effects.push({ b: bi, k: 'coins', x1: x, y1: y, t0: t, dur: 0.7 });
-      if (bi === G.you) G.effects.push({ b: bi, k: 'txt', x1: labelX(x), y1: Math.max(T * 0.75, y - 10), text: '+' + GD.sellValue(GD.TOWER_ORDER[old[1]], old[4]), color: '#ffd35c', t0: t, dur: 1.1 });
+      if (bi === G.you) G.effects.push({ b: bi, k: 'txt', x1: labelX(x), y1: Math.max(T * 0.75, y - 10), text: '+' + GD.sellValue(GD.TOWER_ORDER[old[1]], old[4], twPath(old)), color: '#ffd35c', t0: t, dur: 1.1 });
     }
     for (const [id, a] of anim) if (t - a.t0 > a.dur) anim.delete(id);
   }
@@ -633,7 +640,8 @@
     }
     if (s.pct) { c.push(['Max HP / hit', pct(s.pct)]); c.push(['Max hit', s.maxHit]); } // Hex Idol
     else if (s.dmg || all) c.push(['Damage', +(s.dmg || 0).toFixed(1)]);
-    if (s.kind === 'pulse') c.push(['Slow', pct(s.slow)]);
+    if (s.kind === 'pulse' || s.slow || (all && s.kind === 'bomb')) c.push(['Slow', pct(s.slow || 0)]); // Cannon path B slows too
+    if (s.brittle || (all && s.kind === 'pulse')) c.push(['Damage taken', '+' + pct(s.brittle || 0)]); // Frost path B
     if (s.kind === 'jar') { c.push(['Charges', s.charges]); c.push(['Recharge', s.chargeTime + 's']); }
     else if (s.rate || all) c.push([RATE_LABEL[s.kind] || 'Shots/s', +(s.rate || 0).toFixed(2)]);
     c.push([s.kind === 'light' ? 'Light' : 'Range', s.range > 50 ? 'Map' : +s.range.toFixed(1)]);
@@ -685,7 +693,7 @@
     const round = G.cur ? G.cur.round : 0;
     const key = G.placingSlime ? `sl:${G.placingSlime}:${round}`
       : G.placing ? `p:${G.placing}:${GD.TOWERS[G.placing].base.shotCost ? round : ''}`
-      : tw ? `t:${tw[0]}:${tw[4]}:${tw[5]}:${GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.growCap ? tw[6] : ''}:${GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.shotCost ? round : ''}` : 'none';
+      : tw ? `t:${tw[0]}:${tw[4]}:${tw[5]}:${tw[7]}:${GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.growCap ? tw[6] : ''}:${GD.TOWERS[GD.TOWER_ORDER[tw[1]]].base.shotCost ? round : ''}` : 'none';
     if (key !== G.panelKey || force) {
       G.panelKey = key;
       if (G.placingSlime) { // test field: placing a slime
@@ -701,24 +709,41 @@
           <p class="hint">Click a free tile to build for <b class="gold">${T0.cost}</b>. <kbd>Esc</kbd> cancels.</p></div>
           <div class="tp-side">${statChips(GD.towerStats(G.placing, 0))}<p class="hint"><kbd>Shift</kbd> + click builds several.</p></div>`;
       } else if (tw) {
-        const type = GD.TOWER_ORDER[tw[1]], T0 = GD.TOWERS[type], level = tw[4];
+        const type = GD.TOWER_ORDER[tw[1]], T0 = GD.TOWERS[type], level = tw[4], path = twPath(tw);
         // a spectator sees the watched player's tower read-only: no upgrade preview, sell or targeting buttons
-        const next = G.spectator ? null : T0.upgrades[level];
+        // fork: this upgrade picks one of two paths (Archer, Cannon, Frost, Sniper); both are offered side by side
+        const fork = !G.spectator && !!T0.branch && level === GD.FORK;
+        const next = G.spectator || fork ? null : GD.upgradeList(type, path)[level];
+        const pathName = T0.branch && level > GD.FORK ? GD.upgradeList(type, path)[GD.FORK].name : '';
         const lvlLabel = level >= 3 ? 'MAX' : `Level ${level + 1}`;
-        const upHtml = G.spectator ? `<p class="muted desc" title="${T0.desc}">${T0.desc}</p>` : next
-          ? `<div class="next-up"><div><b>${next.name}</b><small title="${next.desc}">${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
+        const forkBtn = (p, i) => {
+          const list = GD.upgradeList(type, p), u = list[level], then = list[level + 1];
+          const tip = `${u.name}: ${u.desc}.${then ? ` Then ${then.name}: ${then.desc}.` : ''} (${i ? 'I' : 'U'})`;
+          return `<button class="btn up path" data-path="${p}" data-cost="${u.cost}" title="${tip}"><span>${u.name}</span><b>${u.cost}</b></button>`;
+        };
+        const upHtml = G.spectator ? `<p class="muted desc" title="${T0.desc}">${T0.desc}</p>`
+          : fork ? `<div class="next-up fork" role="group" aria-label="Choose an upgrade path">${['a', 'b'].map(forkBtn).join('')}</div>`
+          : next ? `<div class="next-up"><div><b>${next.name}</b><small title="${next.desc}">${next.desc}</small></div><button class="btn up" data-act="upgrade" title="Upgrade (U)">Upgrade <b>${next.cost}</b></button></div>`
           : '<div class="next-up maxed"><b>Fully upgraded</b></div>';
         const modeName = (m) => m[0].toUpperCase() + m.slice(1);
         const modes = NO_TARGET.has(T0.base.kind) ? ''
           : G.spectator ? `<p class="muted">Targeting: <b>${modeName(GD.TARGET_MODES[tw[5]] || 'first')}</b></p>`
           : `<div class="seg" role="group" aria-label="Targeting">${GD.TARGET_MODES.map((m, i) =>
             `<button data-mode="${m}" class="${tw[5] === i ? 'on' : ''}">${modeName(m)}</button>`).join('')}</div>`;
-        const cur = GD.towerStats(type, level), nx = next ? GD.towerStats(type, level + 1) : null;
+        const cur = GD.towerStats(type, level, path), nx = next ? GD.towerStats(type, level + 1, path) : null;
         // Elder Sapling: tw[6] is its growth before the cap; each level caps it (a higher cap pays out at once)
         if (cur.growCap) { cur.dmg += Math.min(cur.growCap, tw[6] || 0); if (nx) nx.dmg += Math.min(nx.growCap, tw[6] || 0); }
-        const sell = G.spectator ? '' : `<button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level)}</b></button>`;
-        panel.innerHTML = `<div class="tp-main"><div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''}" title="Level ${level + 1} of 4">${lvlLabel}</span>${sell}</div>
-          ${upHtml}${modes}</div><div class="tp-side">${statChips(cur, nx)}${G.sandbox ? '<p class="dps" title="Counted since the tower was built or the counters were reset"></p>' : ''}</div>`;
+        const sell = G.spectator ? '' : `<button class="btn sell" data-act="sell" title="Sell (Delete)">Sell <b>${GD.sellValue(type, level, path)}</b></button>`;
+        const badgeTip = `Level ${level + 1} of 4${pathName ? `, ${pathName} path` : ''}`;
+        panel.innerHTML = `<div class="tp-main"><div class="ph"><h3>${T0.name}</h3><span class="lvl-badge ${level >= 3 ? 'max' : ''} ${path === 'b' && pathName ? 'path-b' : ''}" title="${badgeTip}">${lvlLabel}</span>${sell}</div>
+          ${upHtml}${modes}</div><div class="tp-side"><div class="tp-chips">${statChips(cur, nx)}</div>${G.sandbox ? '<p class="dps" title="Counted since the tower was built or the counters were reset"></p>' : ''}</div>`;
+        // at a fork, pointing at a path (or tabbing to it) previews what it changes
+        panel.querySelectorAll('[data-path]').forEach((b) => {
+          const show = (p) => { panel.querySelector('.tp-chips').innerHTML = statChips(cur, p ? GD.towerStats(type, level + 1, p) : null); };
+          b.onmouseenter = b.onfocus = () => show(b.dataset.path);
+          b.onmouseleave = b.onblur = () => show(null);
+          b.onclick = () => act({ type: 'upgrade', id: tw[0], path: b.dataset.path });
+        });
         panel.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act({ type: 'target', id: tw[0], mode: b.dataset.mode })));
         const up = panel.querySelector('[data-act=upgrade]');
         if (up) up.onclick = () => act({ type: 'upgrade', id: tw[0] });
@@ -740,16 +765,18 @@
     // live affordability of the upgrade button: says how much gold is missing
     const up = panel.querySelector('[data-act=upgrade]');
     if (up && tw && me) {
-      const u = GD.TOWERS[GD.TOWER_ORDER[tw[1]]].upgrades[tw[4]];
+      const u = GD.upgradeList(GD.TOWER_ORDER[tw[1]], twPath(tw))[tw[4]];
       const short = u ? u.cost - me.gold : 0;
       up.disabled = !u || short > 0;
       const label = u ? (short > 0 ? `Need <b>${short}</b> more` : `Upgrade <b>${u.cost}</b>`) : '';
       if (up.dataset.label !== label) { up.dataset.label = label; up.innerHTML = label; }
     }
-    // test field: the selected tower's damage counter (tw[7] damage over tw[8] seconds)
+    // the two path buttons at a fork: greyed out until you can afford them
+    if (me) panel.querySelectorAll('[data-path]').forEach((b) => { b.disabled = me.gold < Number(b.dataset.cost); });
+    // test field: the selected tower's damage counter (tw[8] damage over tw[9] seconds)
     const dps = panel.querySelector('.dps');
-    if (dps && tw && tw.length > 8) {
-      const v = `Damage <b>${tw[7]}</b> · <b>${(tw[7] / Math.max(1, tw[8])).toFixed(1)}</b> per second`;
+    if (dps && tw && tw.length > 9) {
+      const v = `Damage <b>${tw[8]}</b> · <b>${(tw[8] / Math.max(1, tw[9])).toFixed(1)}</b> per second`;
       if (dps.dataset.v !== v) { dps.dataset.v = v; dps.innerHTML = v; }
     }
   }
@@ -891,7 +918,8 @@
         if (btn && !btn.disabled) act({ type: 'send', pack: GD.SENDS[si].id });
         return;
       }
-      if (G.selected && (e.key === 'u' || e.key === 'U')) act({ type: 'upgrade', id: G.selected });
+      if (G.selected && (e.key === 'u' || e.key === 'U')) act({ type: 'upgrade', id: G.selected }); // at a fork: the left path
+      if (G.selected && (e.key === 'i' || e.key === 'I') && $('tower-panel').querySelector('[data-path="b"]')) act({ type: 'upgrade', id: G.selected, path: 'b' });
       if (G.selected && (e.key === 'Delete' || e.key === 'Backspace')) act({ type: 'sell', id: G.selected });
     });
     // test field tools
@@ -949,7 +977,7 @@
     if (main) {
       const sel = G.selected && b.tmap.get(G.selected);
       if (sel) {
-        const s = GD.towerStats(GD.TOWER_ORDER[sel[1]], sel[4]);
+        const s = twStats(sel);
         if (s.range > 0 && s.range < 50) ring(g, (sel[2] + 0.5) * T, (sel[3] + 0.5) * T, s.range * T, 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0.7)');
       }
     }
@@ -958,7 +986,7 @@
     const lights = [];
     for (const tw of b.towers) {
       if (GD.TOWER_ORDER[tw[1]] !== 'lantern') continue;
-      const r = GD.towerStats('lantern', tw[4]).range, cx = (tw[2] + 0.5) * T, cy = (tw[3] + 0.5) * T;
+      const r = twStats(tw).range, cx = (tw[2] + 0.5) * T, cy = (tw[3] + 0.5) * T;
       lights.push([tw[2] + 0.5, tw[3] + 0.5, r * r]);
       const glow = g.createRadialGradient(cx, cy, T * 0.3, cx, cy, r * T);
       glow.addColorStop(0, 'rgba(255,214,110,0.32)'); glow.addColorStop(0.7, 'rgba(255,200,90,0.12)'); glow.addColorStop(1, 'rgba(255,190,80,0)');
@@ -974,8 +1002,8 @@
         if (an.k === 'drop') y -= (1 - k) * (1 - k) * T * 0.7;
         else size = T * (1 + 0.2 * Math.sin(k * Math.PI));
       }
-      const extra = type === 'sapling' ? Math.min(GD.towerStats(type, tw[4]).growCap, tw[6] || 0) : tw[6] || 0;
-      R.tower(g, type, tw[4], (tw[2] + 0.5) * T, y, skin, G.aim[bi][tw[0]] || 0, size, t, { extra });
+      const extra = type === 'sapling' ? Math.min(twStats(tw).growCap, tw[6] || 0) : tw[6] || 0;
+      R.tower(g, type, tw[4], (tw[2] + 0.5) * T, y, skin, G.aim[bi][tw[0]] || 0, size, t, { extra, path: twPath(tw) });
       if (main && tw[0] === G.selected) {
         g.strokeStyle = '#fff'; g.lineWidth = 2; g.setLineDash([4, 4]);
         g.strokeRect(tw[2] * T + 1, tw[3] * T + 1, T - 2, T - 2); g.setLineDash([]);
@@ -984,7 +1012,7 @@
 
     // towers that see ghosts, plus lantern lights (main board only): [x, y, range²], same check as the server
     const seers = main ? b.towers.map((tw) => {
-      const s = GD.towerStats(GD.TOWER_ORDER[tw[1]], tw[4]);
+      const s = twStats(tw);
       return s.detect ? [tw[2] + 0.5, tw[3] + 0.5, s.range * s.range] : null;
     }).filter(Boolean).concat(lights) : null;
     const inside = (list, p) => list.some(([sx, sy, r2]) => (p.x - sx) * (p.x - sx) + (p.y - sy) * (p.y - sy) <= r2);

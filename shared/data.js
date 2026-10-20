@@ -172,6 +172,11 @@
         { name: 'Quick Draw', cost: 220, desc: '+50% attack speed', mul: { rate: 1.5 } },
         { name: 'Eagle Eye', cost: 450, desc: '3 targets, +range, sees ghosts', set: { targets: 3, detect: true }, add: { range: 0.8 } },
       ],
+      // path B (instead of Quick Draw → Eagle Eye): heavy arrows for armor and bosses
+      branch: [
+        { name: 'Bodkin Points', cost: 240, desc: '+1 damage, ignores armor', add: { dmg: 1 }, set: { pierceArmor: true } },
+        { name: 'Longbow', cost: 480, desc: '+4 damage, +range', add: { dmg: 4, range: 1.2 } },
+      ],
     },
     cannon: {
       name: 'Cannon', cost: 380, desc: 'Splash damage. Ignores armor.',
@@ -181,6 +186,11 @@
         { name: 'Bigger Bombs', cost: 200, desc: '+1 damage, bigger blast', add: { dmg: 1, splash: 0.4 } },
         { name: 'Rapid Reload', cost: 350, desc: '+60% attack speed', mul: { rate: 1.6 } },
         { name: 'Heavy Shells', cost: 700, desc: '+4 damage', add: { dmg: 4 } },
+      ],
+      // path B (instead of Rapid Reload → Heavy Shells): blasts that slow, then a much bigger blast
+      branch: [
+        { name: 'Concussion Shells', cost: 320, desc: 'Blasts slow slimes 30%', set: { slow: 0.3, slowDur: 1.5 } },
+        { name: 'Cluster Bombs', cost: 650, desc: '+1 damage, much bigger blast', add: { dmg: 1, splash: 0.6 } },
       ],
     },
     frost: {
@@ -192,6 +202,11 @@
         { name: 'Frostbite', cost: 300, desc: 'Pulses deal 1 damage', add: { dmg: 1 } },
         { name: 'Glacier', cost: 500, desc: '+range, +1 damage, sees ghosts', add: { range: 0.8, dmg: 1 }, set: { detect: true } },
       ],
+      // path B (instead of Frostbite → Glacier): slimes it slows take more damage from every tower
+      branch: [
+        { name: 'Brittle Ice', cost: 300, desc: 'Slowed slimes take +30% damage', set: { brittle: 0.3 } },
+        { name: 'Shatter', cost: 550, desc: '+50% damage taken, +range', set: { brittle: 0.5 }, add: { range: 0.6 } },
+      ],
     },
     sniper: {
       name: 'Sniper', cost: 320, desc: 'Hits anywhere on the map. Sees ghosts.',
@@ -201,6 +216,11 @@
         { name: 'Hollow Points', cost: 250, desc: '+5 damage', add: { dmg: 5 } },
         { name: 'Bolt Action', cost: 400, desc: '+80% attack speed', mul: { rate: 1.8 } },
         { name: 'Armor Breaker', cost: 800, desc: '+10 damage, ignores armor', add: { dmg: 10 }, set: { pierceArmor: true } },
+      ],
+      // path B (instead of Bolt Action → Armor Breaker): a fast rifle for crowds
+      branch: [
+        { name: 'Semi-Auto', cost: 380, desc: '2.2x attack speed, -3 damage', mul: { rate: 2.2 }, add: { dmg: -3 } },
+        { name: 'Twin Scopes', cost: 700, desc: 'Hits 2 slimes per shot, +1 damage', set: { targets: 2 }, add: { dmg: 1 } },
       ],
     },
     mine: {
@@ -330,24 +350,31 @@
   const DEFAULT_TOWERS = TOWER_ORDER.filter((t) => TOWERS[t].unlock.coins === 0);
   const TARGET_MODES = ['first', 'last', 'strong', 'close'];
 
-  function towerStats(type, level) {
+  // Upgrade paths: towers with a `branch` fork at their 2nd upgrade (FORK). Path 'a' is `upgrades` as listed;
+  // path 'b' shares the first upgrade, then takes the branch. Towers without a branch only have path 'a'.
+  const FORK = 1;
+  function upgradeList(type, path) {
     const T = TOWERS[type];
+    return path === 'b' && T.branch ? T.upgrades.slice(0, FORK).concat(T.branch) : T.upgrades;
+  }
+  function towerStats(type, level, path) {
+    const T = TOWERS[type], list = upgradeList(type, path);
     const s = Object.assign({}, T.base);
     for (let i = 0; i < level; i++) {
-      const u = T.upgrades[i];
+      const u = list[i];
       if (u.add) for (const k in u.add) s[k] = (s[k] || 0) + u.add[k];
       if (u.mul) for (const k in u.mul) s[k] = (s[k] || 0) * u.mul[k];
       if (u.set) Object.assign(s, u.set);
     }
     return s;
   }
-  function towerValue(type, level) {
-    const T = TOWERS[type];
-    let v = T.cost;
-    for (let i = 0; i < level; i++) v += T.upgrades[i].cost;
+  function towerValue(type, level, path) {
+    const list = upgradeList(type, path);
+    let v = TOWERS[type].cost;
+    for (let i = 0; i < level; i++) v += list[i].cost;
     return v;
   }
-  function sellValue(type, level) { return Math.floor(towerValue(type, level) * RULES.sellRefund); }
+  function sellValue(type, level, path) { return Math.floor(towerValue(type, level, path) * RULES.sellRefund); }
   // Goldspitter: gold per shot, +1 every 8 rounds (server charges it, the tower panel shows it)
   function shotCost(stats, round) { return Math.max(1, stats.shotCost + Math.floor(Math.max(0, round) / 8)); }
   // Elder Sapling: +1 damage every growEvery rounds since it was planted, up to growCap
@@ -432,7 +459,7 @@
 
   return {
     COLS, ROWS, RULES, MAPS, posAt, ENEMIES, ENEMY_ORDER, TOWERS, TOWER_ORDER, DEFAULT_TOWERS,
-    TARGET_MODES, towerStats, towerValue, sellValue, shotCost, growth, SENDS, roundWave, hpMulForRound,
+    TARGET_MODES, towerStats, towerValue, sellValue, shotCost, growth, FORK, upgradeList, SENDS, roundWave, hpMulForRound,
     xpForNext, levelInfo, titleFor, SKINS, BANNERS, DEFAULT_COSMETICS, EMOTES, DAILY_WIN_BONUS,
     BUILTIN_MAPS, THEMES, validatePath, registerMap, SANDBOX, sandboxMap,
   };

@@ -90,10 +90,12 @@
   // Draw a tower centred at (x,y) pixels. size = tile size in px.
   // Draw a tower centred at (x,y) px. size = tile size in px.
   // level 0 = base, 1-3 = upgrades bought. Each upgrade changes the look; a badge shows the level.
+  // opts.path 'b': the tower took upgrade path B at its fork (Archer, Cannon, Frost, Sniper), which looks different from level 3
   function tower(g, type, level, x, y, skinId, angle, size, time, opts) {
     const skin = GD.SKINS[skinId] || GD.SKINS.skin_classic;
     const s = size / 40;
     const L = level || 0, t = time || 0;
+    const B = !!(opts && opts.path === 'b') && L >= 2;
     // Tiers: bronze (lvl 2) → silver with battlements (lvl 3) → gold, glowing (MAX). Towers also grow a little.
     const k = [0.9, 1.0, 1.06, 1.1][Math.min(3, L)];
     const tier = [skin.trim, '#c8793a', '#d6dee8', '#f0b81c'][Math.min(3, L)];
@@ -130,21 +132,24 @@
         g.fillStyle = L >= 2 ? '#8c5a2b' : '#b57c45'; g.beginPath(); g.arc(0, 0, 10, 0, 7); g.fill();
         g.strokeStyle = L >= 3 ? '#e0a816' : '#7a4d24'; g.lineWidth = 2; g.stroke();
         g.rotate(a);
-        const br = L >= 2 ? 11.5 : 10; // Quick Draw: bigger bow
+        // Quick Draw: bigger bow; path B Longbow: a long one
+        const br = B ? (L >= 3 ? 14 : 10.5) : L >= 2 ? 11.5 : 10;
         g.strokeStyle = L >= 2 ? '#2a1708' : '#3d2610'; g.lineWidth = L >= 2 ? 3.2 : 2.6;
         g.beginPath(); g.arc(-3, 0, br, -1.15, 1.15); g.stroke();
         g.strokeStyle = '#eee'; g.lineWidth = 1;
         const ex = -3 + br * Math.cos(1.15), ey = br * Math.sin(1.15);
         g.beginPath(); g.moveTo(ex, -ey); g.lineTo(ex, ey); g.stroke();
-        const arrows = L >= 3 ? [-0.32, 0, 0.32] : [0]; // Eagle Eye: three arrows
+        const arrows = L >= 3 && !B ? [-0.32, 0, 0.32] : [0]; // Eagle Eye: three arrows
         for (const off of arrows) {
           g.save(); g.rotate(off);
-          g.strokeStyle = '#f5f0e0'; g.lineWidth = 2;
-          g.beginPath(); g.moveTo(-1, 0); g.lineTo(13, 0); g.stroke();
-          if (L >= 1) { g.fillStyle = '#c9d3df'; g.beginPath(); g.moveTo(16, 0); g.lineTo(12, -2.6); g.lineTo(12, 2.6); g.fill(); } // Sharp Arrows: metal tips
+          g.strokeStyle = '#f5f0e0'; g.lineWidth = B ? 2.6 : 2;
+          const tip = B && L >= 3 ? 16 : 13;
+          g.beginPath(); g.moveTo(-1, 0); g.lineTo(tip, 0); g.stroke();
+          if (B) { g.fillStyle = '#3a3f4a'; g.beginPath(); g.moveTo(tip + 4.5, 0); g.lineTo(tip - 1, -3.6); g.lineTo(tip - 1, 3.6); g.fill(); } // Bodkin Points: heavy dark heads
+          else if (L >= 1) { g.fillStyle = '#c9d3df'; g.beginPath(); g.moveTo(16, 0); g.lineTo(12, -2.6); g.lineTo(12, 2.6); g.fill(); } // Sharp Arrows: metal tips
           g.restore();
         }
-        if (L >= 3) { g.rotate(-a); g.fillStyle = '#e0453a'; g.beginPath(); g.moveTo(-8, -9); g.quadraticCurveTo(-14, -15, -6, -16); g.quadraticCurveTo(-7, -12, -8, -9); g.fill(); } // feather
+        if (L >= 3) { g.rotate(-a); g.fillStyle = B ? '#3f9fd1' : '#e0453a'; g.beginPath(); g.moveTo(-8, -9); g.quadraticCurveTo(-14, -15, -6, -16); g.quadraticCurveTo(-7, -12, -8, -9); g.fill(); } // feather
         break;
       }
       case 'cannon': {
@@ -157,19 +162,42 @@
           g.fillStyle = '#1a1d24'; g.fillRect(13, yOff - w / 2 - 1, 4, w + 2);
           if (L >= 3) { g.fillStyle = '#e0a816'; g.fillRect(6, yOff - w / 2, 2, w); g.fillRect(10, yOff - w / 2, 2, w); }
         };
-        if (L >= 2) { barrel(-4.5, 7); barrel(4.5, 7); } // Rapid Reload: twin barrels
+        if (B) { // path B: one wide barrel with blue concussion bands
+          barrel(0, 13);
+          g.fillStyle = '#5ab0ff'; g.fillRect(4, -6.5, 2, 13); g.fillRect(8.5, -6.5, 2, 13);
+        } else if (L >= 2) { barrel(-4.5, 7); barrel(4.5, 7); } // Rapid Reload: twin barrels
         else barrel(0, L >= 1 ? 11 : 10);
         g.fillStyle = '#6a7386'; g.beginPath(); g.arc(-3, -3, 3, 0, 7); g.fill();
+        if (B && L >= 3) { // Cluster Bombs: little bombs ready on the turret
+          g.rotate(-a);
+          for (const [bx, by] of [[-9, 9], [0, 11], [9, 9]]) {
+            g.fillStyle = '#1a1d24'; g.beginPath(); g.arc(bx, by, 3.2, 0, 7); g.fill();
+            g.fillStyle = '#ffd35c'; g.fillRect(bx - 0.6, by - 4.6, 1.2, 1.8);
+          }
+        }
         break;
       }
       case 'frost': {
         const r = L >= 3 ? 13.5 : 12;
-        g.fillStyle = L >= 1 ? '#7fd2ff' : '#a8e6ff'; g.strokeStyle = L >= 1 ? '#2a7fb8' : '#3f9fd1'; g.lineWidth = 2;
-        if (L >= 3) { g.shadowColor = '#bff0ff'; g.shadowBlur = 10; }
+        // path B (Brittle Ice → Shatter): violet, cracked ice
+        g.fillStyle = B ? '#c7b8ff' : L >= 1 ? '#7fd2ff' : '#a8e6ff'; g.strokeStyle = B ? '#6a4fc0' : L >= 1 ? '#2a7fb8' : '#3f9fd1'; g.lineWidth = 2;
+        if (L >= 3) { g.shadowColor = B ? '#e0d4ff' : '#bff0ff'; g.shadowBlur = 10; }
         g.beginPath();
         for (let i = 0; i < 6; i++) { const q = (i / 6) * Math.PI * 2 + Math.PI / 6; g.lineTo(Math.cos(q) * r, Math.sin(q) * r); }
         g.closePath(); g.fill(); g.stroke(); g.shadowBlur = 0;
-        if (L >= 2) { // Frostbite: ice shards
+        if (B) { // Brittle Ice: cracks; Shatter: loose shards around it
+          g.strokeStyle = '#4b2f9e'; g.lineWidth = 1.2;
+          for (const [x1, y1, x2, y2, x3, y3] of [[-r + 2, -3, -4, -1, -1, -6], [r - 3, 4, 3, 2, 1, 7], [-2, r - 2, 0, 3, 5, 5]]) {
+            g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.lineTo(x3, y3); g.stroke();
+          }
+          if (L >= 3) {
+            g.fillStyle = '#efe8ff';
+            for (let i = 0; i < 5; i++) {
+              const q = (i / 5) * Math.PI * 2 + t * 0.8, d = r + 4;
+              g.beginPath(); g.moveTo(Math.cos(q) * (d + 3), Math.sin(q) * (d + 3)); g.lineTo(Math.cos(q + 0.12) * d, Math.sin(q + 0.12) * d); g.lineTo(Math.cos(q - 0.12) * d, Math.sin(q - 0.12) * d); g.fill();
+            }
+          }
+        } else if (L >= 2) { // Frostbite: ice shards
           g.fillStyle = '#e8fbff';
           for (let i = 0; i < 6; i++) {
             const q = (i / 6) * Math.PI * 2;
@@ -188,9 +216,15 @@
         const len = L >= 1 ? 24 : 21; // Hollow Points: longer barrel
         g.fillStyle = L >= 3 ? '#8a6410' : '#262b19'; g.fillRect(-2, -2.5, len, 5);
         g.fillStyle = '#111'; g.fillRect(len - 4, -3.2, 3, 6.4); // muzzle
-        g.fillStyle = '#111'; g.fillRect(2, L >= 2 ? -7.5 : -6.5, L >= 2 ? 11 : 8, L >= 2 ? 5 : 4); // Bolt Action: bigger scope
-        g.fillStyle = '#7fd3ff'; g.fillRect(L >= 2 ? 12 : 9, L >= 2 ? -7 : -6, 1.5, L >= 2 ? 4 : 3);
-        if (L >= 3) { g.strokeStyle = 'rgba(255,60,60,0.55)'; g.lineWidth = 1; g.beginPath(); g.moveTo(len, 0); g.lineTo(len + 14, 0); g.stroke(); } // laser
+        if (B) { // path B: Semi-Auto magazine, Twin Scopes a second scope
+          g.fillStyle = '#1c2012'; g.fillRect(5, 2, 4, 6.5);
+          g.fillStyle = '#111'; g.fillRect(2, -6.5, 8, 4); g.fillStyle = '#7fd3ff'; g.fillRect(9, -6, 1.5, 3);
+          if (L >= 3) { g.fillStyle = '#111'; g.fillRect(11, -6.5, 7, 4); g.fillStyle = '#ff9a7f'; g.fillRect(17, -6, 1.5, 3); }
+        } else {
+          g.fillStyle = '#111'; g.fillRect(2, L >= 2 ? -7.5 : -6.5, L >= 2 ? 11 : 8, L >= 2 ? 5 : 4); // Bolt Action: bigger scope
+          g.fillStyle = '#7fd3ff'; g.fillRect(L >= 2 ? 12 : 9, L >= 2 ? -7 : -6, 1.5, L >= 2 ? 4 : 3);
+        }
+        if (L >= 3 && !B) { g.strokeStyle = 'rgba(255,60,60,0.55)'; g.lineWidth = 1; g.beginPath(); g.moveTo(len, 0); g.lineTo(len + 14, 0); g.stroke(); } // laser
         break;
       }
       case 'tesla': {

@@ -66,6 +66,7 @@ class Match {
       this.state = 'running';
       this.time = 0;
       this.round = 1;
+      this.boards[0].gold = SANDBOX_GOLD; // endless from the start (topped up every tick)
     }
   }
 
@@ -134,7 +135,7 @@ class Match {
   spawnStill(b, type, x, y, tile, origin) {
     const hpMul = GD.hpMulForRound(this.round);
     const hp = Math.max(1, Math.round(GD.ENEMIES[type].hp * hpMul));
-    const e = { id: b.nextId++, type, d: x + y * 0.001, hp, maxHp: hp, hpMul, sent: false, own: false, spd: 1, slowUntil: 0, slowAmt: 0, rootUntil: 0, rootImmune: 0, lit: 0, x, y, dead: false, still: true, tile: tile || null, origin: origin || null };
+    const e = { id: b.nextId++, type, d: x + y * 0.001, hp, maxHp: hp, hpMul, sent: false, own: false, spd: 1, slowUntil: 0, slowAmt: 0, brittle: 0, brittleUntil: 0, rootUntil: 0, rootImmune: 0, lit: 0, x, y, dead: false, still: true, tile: tile || null, origin: origin || null };
     b.enemies.push(e);
     return e;
   }
@@ -230,7 +231,7 @@ class Match {
     const E = GD.ENEMIES[type];
     const hp = Math.max(1, Math.round(E.hp * hpMul));
     const p = GD.posAt(this.map, d);
-    const e = { id: b.nextId++, type, d, hp, maxHp: hp, hpMul, sent: !!sent, own: !!own, spd: spd || 1, slowUntil: 0, slowAmt: 0, rootUntil: 0, rootImmune: 0, lit: 0, x: p.x, y: p.y, dead: false };
+    const e = { id: b.nextId++, type, d, hp, maxHp: hp, hpMul, sent: !!sent, own: !!own, spd: spd || 1, slowUntil: 0, slowAmt: 0, brittle: 0, brittleUntil: 0, rootUntil: 0, rootImmune: 0, lit: 0, x: p.x, y: p.y, dead: false };
     b.enemies.push(e);
     return e;
   }
@@ -420,17 +421,21 @@ class Match {
         for (const o of b.enemies) {
           if (o.dead) continue;
           const dx = o.x - x, dy = o.y - y;
-          if (dx * dx + dy * dy <= rr) this.damage(b, o, s.dmg, true);
+          if (dx * dx + dy * dy > rr) continue;
+          this.damage(b, o, s.dmg, true);
+          if (s.slow && !o.dead) this.applySlow(o, s.slow, s.slowDur); // Cannon path B: concussion
         }
         break;
       }
       case 'pulse': {
         b.events.push(['p', t.id]);
         for (const e of c) {
-          const E = GD.ENEMIES[e.type];
-          const amt = s.slow * (1 - (E.slowResist || 0));
-          if (amt >= e.slowAmt || e.slowUntil < this.time) e.slowAmt = amt;
-          e.slowUntil = this.time + s.slowDur;
+          this.applySlow(e, s.slow, s.slowDur);
+          // Frost path B: slimes it slows take more damage from every tower (the strongest Frost counts)
+          if (s.brittle && (e.brittleUntil <= this.time || s.brittle >= e.brittle)) { // a weaker one doesn't extend a stronger
+            e.brittle = s.brittle;
+            e.brittleUntil = this.time + s.slowDur;
+          }
           if (s.dmg) this.damage(b, e, s.dmg, s.pierceArmor);
         }
         break;
@@ -452,16 +457,24 @@ class Match {
     }
   }
 
+  // slow a slime by `amount` for `dur` s (the King resists part of it). A weaker slow neither replaces nor
+  // extends a stronger one that is still running (so Cannon B's 30% can't keep a Frost's 60% going).
+  applySlow(e, amount, dur) {
+    const amt = amount * (1 - (GD.ENEMIES[e.type].slowResist || 0));
+    if (e.slowUntil <= this.time || amt >= e.slowAmt) { e.slowAmt = amt; e.slowUntil = this.time + dur; }
+  }
+
   // petrify (Basilisk Eye): the slime dies without splitting into its children
   damage(b, e, dmg, pierce, petrify) {
     if (e.dead || dmg <= 0) return;
     const E = GD.ENEMIES[e.type];
-    const d = pierce ? dmg : dmg - (E.armor || 0);
+    let d = pierce ? dmg : dmg - (E.armor || 0);
     if (d <= 0) return;
+    if (e.brittleUntil > this.time) d = Math.round(d * (1 + e.brittle) * 100) / 100; // Frost path B: brittle (after armor)
     if (this.sandbox && this.curTower) this.curTower.dealt = (this.curTower.dealt || 0) + Math.min(d, e.hp); // no overkill
     e.hp -= d;
     e.hit = true; // took real damage since the last snapshot (the client flashes it)
-    if (e.hp <= 0) {
+    if (e.hp <= 1e-6) { // (brittle hits are fractional: no float crumbs left alive)
       e.dead = true;
       if (!e.sent) b.gold += E.bounty; // sent slimes pay no bounty, so sending is never a gift
       b.stats.kills++;
@@ -491,7 +504,7 @@ class Match {
     } else if (a.type === 'slime' || a.type === 'sandbox') return { ok: false, error: 'Only in the test field' };
     switch (a.type) {
       case 'place': return this.place(idx, b, String(a.tower), a.col | 0, a.row | 0);
-      case 'upgrade': return this.upgrade(b, a.id | 0);
+      case 'upgrade': return this.upgrade(b, a.id | 0, a.path === 'b' ? 'b' : 'a');
       case 'sell': return this.sell(b, a.id | 0);
       case 'target': return this.setTarget(b, a.id | 0, String(a.mode));
       case 'send': return this.send(idx, b, String(a.pack));
@@ -509,8 +522,9 @@ class Match {
     if (this.map.pathTiles.has(key)) return { ok: false, error: "Can't build on the path" };
     if (b.occupied.has(key)) return { ok: false, error: 'Tile taken' };
     if (this.sandbox && b.enemies.some((e) => e.tile === key)) return { ok: false, error: 'A slime is on that tile' };
-    if (b.towers.length >= R.maxTowers) return { ok: false, error: 'Tower limit reached' };
-    if (T.limit && b.towers.filter((x) => x.type === type).length >= T.limit) return { ok: false, error: T.limit === 1 ? `Only 1 ${T.name} allowed` : `Max ${T.limit} ${T.name}s` };
+    // the test field has no placing limits (its board size is the only cap)
+    if (!this.sandbox && b.towers.length >= R.maxTowers) return { ok: false, error: 'Tower limit reached' };
+    if (!this.sandbox && T.limit && b.towers.filter((x) => x.type === type).length >= T.limit) return { ok: false, error: T.limit === 1 ? `Only 1 ${T.name} allowed` : `Max ${T.limit} ${T.name}s` };
     if (b.gold < T.cost) return { ok: false, error: 'Not enough gold' };
     b.gold -= T.cost;
     // dealt/since: damage counter for the test field. There an Elder Sapling grows as if planted at the
@@ -522,15 +536,18 @@ class Match {
     return { ok: true, id: t.id };
   }
 
-  upgrade(b, id) {
+  // path: which upgrade path to take at the fork (towers with a branch, see GD.upgradeList); ignored elsewhere
+  upgrade(b, id, path) {
     const t = b.towers.find((x) => x.id === id);
     if (!t) return { ok: false, error: 'No such tower' };
-    const u = GD.TOWERS[t.type].upgrades[t.level];
+    const p = GD.TOWERS[t.type].branch && t.level === GD.FORK ? path : t.path;
+    const u = GD.upgradeList(t.type, p)[t.level];
     if (!u) return { ok: false, error: 'Fully upgraded' };
     if (b.gold < u.cost) return { ok: false, error: 'Not enough gold' };
     b.gold -= u.cost;
+    t.path = p;
     t.level++;
-    t.stats = GD.towerStats(t.type, t.level);
+    t.stats = GD.towerStats(t.type, t.level, t.path);
     return { ok: true };
   }
 
@@ -538,7 +555,7 @@ class Match {
     const i = b.towers.findIndex((x) => x.id === id);
     if (i < 0) return { ok: false, error: 'No such tower' };
     const t = b.towers[i];
-    b.gold += GD.sellValue(t.type, t.level);
+    b.gold += GD.sellValue(t.type, t.level, t.path);
     b.towers.splice(i, 1);
     b.occupied.delete(t.col + ',' + t.row);
     return { ok: true };
@@ -617,8 +634,8 @@ class Match {
       case 'maxTower': {
         const t = b.towers.find((x) => x.id === (a.id | 0));
         if (!t) return { ok: false, error: 'Select one of your towers first' };
-        t.level = GD.TOWERS[t.type].upgrades.length;
-        t.stats = GD.towerStats(t.type, t.level);
+        t.level = GD.upgradeList(t.type, t.path).length; // keeps a path already chosen, else path A
+        t.stats = GD.towerStats(t.type, t.level, t.path);
         break;
       }
       case 'clear': { // remove every slime on your own board
@@ -680,10 +697,11 @@ class Match {
       mine: mineGold,
       cds: GD.SENDS.map((p) => r2(Math.max(0, (b.sendReady[p.id] || 0) - this.time))),
       // 7th tower field: Storm Jar stored charges, Elder Sapling growth before its cap (the client caps it per level)
-      // test field towers add [damage dealt, seconds counted] for their damage per second
+      // test field towers then add [damage dealt, seconds counted] for their damage per second
       towers: b.towers.map((t) => {
         const tw = [t.id, TI[t.type], t.col, t.row, t.level, MI[t.target],
-          t.stats.kind === 'jar' ? Math.floor(t.charge || 0) : t.stats.growCap ? Math.floor(Math.max(0, this.round - t.born) / t.stats.growEvery) : 0];
+          t.stats.kind === 'jar' ? Math.floor(t.charge || 0) : t.stats.growCap ? Math.floor(Math.max(0, this.round - t.born) / t.stats.growEvery) : 0,
+          t.path === 'b' ? 1 : 0]; // 8th field: upgrade path B
         if (this.sandbox) tw.push(Math.round(t.dealt), r2(this.time - t.since));
         return tw;
       }),
