@@ -318,7 +318,7 @@ class Lobby {
         if (!u) { entries.forEach((x) => x.uid && this.userMatch.get(x.uid) === 'pending' && this.userMatch.delete(x.uid)); return; }
         this.userMatch.set(e.uid, 'pending');
         const pub = prog.publicProfile(u);
-        players.push({ uid: u.id, name: u.username, level: GD.levelInfo(u.xp).level, rating: u.rating || 1000, rank: pub.rank,
+        players.push({ uid: u.id, name: u.username, level: GD.levelInfo(u.xp).level, rating: u.rating || 1000, ranks: pub.ranks,
           unlocked: e.allTowers ? GD.TOWER_ORDER.slice() : u.unlocked.slice(), skin: u.skin, banner: u.banner, cheats: pub.powers && !sandbox });
       }
     }
@@ -366,7 +366,7 @@ class Lobby {
     return {
       matchId: match.id, you: idx, mode: match.mode, map: match.mapId, sandbox: !!match.sandbox,
       mapDef: { name: match.map.name, path: match.map.path, theme: match.map.theme, cols: match.map.cols, rows: match.map.rows },
-      players: match.players.map((p, i) => ({ name: p.name, level: p.level, rating: p.rating, rank: p.rank || null, skin: p.skin, banner: p.banner, isBot: !!p.isBot, unlocked: p.unlocked, cheats: i === idx && !!p.cheats })),
+      players: match.players.map((p, i) => ({ name: p.name, level: p.level, rating: p.rating, ranks: p.ranks || [], skin: p.skin, banner: p.banner, isBot: !!p.isBot, unlocked: p.unlocked, cheats: i === idx && !!p.cheats })),
     };
   }
 

@@ -25,26 +25,33 @@ function newUser(username, passHash) {
   };
 }
 
-// Custom ranks the admin gives players: a short tag shown next to their name, in one of these colors
-// (CSS classes .r-<id>). Stored as u.rank = { text, color }; old docs have none.
-const RANK_COLORS = { lime: 'Lime', pink: 'Pink', gold: 'Gold', sky: 'Sky blue', violet: 'Violet', red: 'Red' };
-const RANK_MAX = 16;
+// Custom ranks the admin gives players (GD.RANKS): u.ranks = [{ text, color: '#rrggbb' }], the first one is the main rank.
+// Docs from the first version have a single u.rank whose color is one of these preset ids.
+const OLD_RANK_COLORS = { lime: '#9be15d', pink: '#ff6fa8', gold: '#ffd35c', sky: '#6cc7ff', violet: '#b49cff', red: '#ff5c5c' };
 
-function rankOf(u) {
-  const r = u && u.rank;
-  return r && r.text && RANK_COLORS[r.color] ? { text: r.text, color: r.color } : null;
+function ranksOf(u) {
+  const list = !u ? [] : Array.isArray(u.ranks) ? u.ranks : u.rank ? [u.rank] : [];
+  return list.map((r) => ({ text: r.text, color: OLD_RANK_COLORS[r.color] || r.color })).filter((r) => r.text && GD.RANK_HEX.test(r.color));
 }
 
-// Admin input → { rank } (null = remove it) or { error }
-function cleanRank(text, color) {
-  text = String(text == null ? '' : text).normalize('NFC').trim().replace(/\s+/g, ' ');
-  if (!text) return { rank: null };
-  if ([...text].length > RANK_MAX) return { error: `Keep the rank to ${RANK_MAX} characters` };
-  if (!/^[\p{L}\p{N} .,!?'&+#:()\/-]+$/u.test(text) || !/[\p{L}\p{N}]/u.test(text)) {
-    return { error: 'Use letters, numbers, spaces and simple punctuation' };
+// Admin input (the whole new list) → { ranks } or { error }
+function cleanRanks(list) {
+  if (!Array.isArray(list)) return { error: 'Invalid ranks' };
+  if (list.length > GD.RANKS.max) return { error: `A player can have up to ${GD.RANKS.max} ranks` };
+  const ranks = [];
+  for (const r of list) {
+    const text = String((r && r.text) || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    const color = String((r && r.color) || '').toLowerCase();
+    if (!text) return { error: 'Type a rank first' };
+    if ([...text].length > GD.RANKS.maxText) return { error: `Keep a rank to ${GD.RANKS.maxText} characters` };
+    if (!/^[\p{L}\p{N} .,!?'&+#:()\/-]+$/u.test(text) || !/[\p{L}\p{N}]/u.test(text)) {
+      return { error: 'Use letters, numbers, spaces and simple punctuation' };
+    }
+    if (!GD.RANK_HEX.test(color)) return { error: 'Pick a color for the rank' };
+    if (ranks.some((x) => x.text.toLowerCase() === text.toLowerCase())) return { error: `"${text}" is already one of the ranks` };
+    ranks.push({ text, color });
   }
-  if (!RANK_COLORS[color]) return { error: 'Pick one of the rank colors' };
-  return { rank: { text, color } };
+  return { ranks };
 }
 
 function publicProfile(u) {
@@ -53,7 +60,7 @@ function publicProfile(u) {
     id: u.id, username: u.username, xp: u.xp, level: li.level, xpInto: li.into, xpNeed: li.need,
     title: GD.titleFor(li.level), coins: u.coins, wins: u.wins, losses: u.losses, botWins: u.botWins,
     games: u.games, bestRound: u.bestRound, unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner,
-    history: u.history || [], dailyAvailable: u.lastDailyWin !== today(), rating: u.rating || 1000, rank: rankOf(u),
+    history: u.history || [], dailyAvailable: u.lastDailyWin !== today(), rating: u.rating || 1000, ranks: ranksOf(u),
     isAdmin: isAdminName(u.username),
     ideas: isAdminName(u.username) || !!u.ideasAccess,
     powers: isAdminName(u.username) || !!u.cheatAccess,
@@ -62,7 +69,7 @@ function publicProfile(u) {
 }
 
 function leaderboardEntry(u) {
-  return { username: u.username, level: GD.levelInfo(u.xp).level, wins: u.wins, losses: u.losses, banner: u.banner, rating: u.rating || 1000, rank: rankOf(u) };
+  return { username: u.username, level: GD.levelInfo(u.xp).level, wins: u.wins, losses: u.losses, banner: u.banner, rating: u.rating || 1000, ranks: ranksOf(u) };
 }
 
 // Elo: rating change for player A given A's score (1 win, 0.5 draw, 0 loss)
@@ -146,4 +153,4 @@ function equip(u, id) {
   return null;
 }
 
-module.exports = { eloDelta, newUser, publicProfile, leaderboardEntry, applyResult, buy, equip, RANK_COLORS, RANK_MAX, rankOf, cleanRank };
+module.exports = { eloDelta, newUser, publicProfile, leaderboardEntry, applyResult, buy, equip, ranksOf, cleanRanks };

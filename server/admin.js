@@ -16,7 +16,7 @@ function summary(u) {
     wins: u.wins, losses: u.losses, botWins: u.botWins, rating: u.rating || 1000, games: u.games,
     bestRound: u.bestRound, createdAt: u.createdAt, banned: !!u.banned, admin: isAdmin(u),
     unlocked: u.unlocked, owned: u.owned, skin: u.skin, banner: u.banner, ideasAccess: !!u.ideasAccess, cheatAccess: !!u.cheatAccess, mapAccess: !!u.mapAccess,
-    rank: prog.rankOf(u),
+    ranks: prog.ranksOf(u),
   };
 }
 
@@ -34,7 +34,6 @@ function mount(app, { store, lobby, authed, wrap }) {
     res.json({
       online: lobby.online(), matches: lobby.matches.size, players: users.length,
       users: users.map(summary).sort((a, b) => b.createdAt - a.createdAt),
-      rankColors: prog.RANK_COLORS, rankMax: prog.RANK_MAX,
     });
   }));
 
@@ -81,18 +80,16 @@ function mount(app, { store, lobby, authed, wrap }) {
     res.json({ user: summary(u) });
   }));
 
-  // Custom rank: { text, color }; empty text removes it
-  app.post('/api/admin/user/:id/rank', authed, adminOnly, wrap(async (req, res) => {
+  // Custom ranks: the whole new list [{ text, color }], first = main rank; [] removes them all
+  app.post('/api/admin/user/:id/ranks', authed, adminOnly, wrap(async (req, res) => {
     const u = await load(req, res);
     if (!u) return;
-    const b = req.body || {};
-    const { rank, error } = prog.cleanRank(b.text, b.color);
+    const { ranks, error } = prog.cleanRanks((req.body || {}).ranks);
     if (error) return res.status(400).json({ error });
-    const before = prog.rankOf(u);
-    if (rank) u.rank = rank; else delete u.rank;
+    u.ranks = ranks;
+    delete u.rank; // the single rank of the first version
     await store.save(u);
-    if (rank) log(req, `set rank of ${u.username} to "${rank.text}" (${rank.color})`);
-    else log(req, `removed rank of ${u.username}${before ? ` ("${before.text}")` : ''}`);
+    log(req, ranks.length ? `set ranks of ${u.username}: ${ranks.map((r) => `"${r.text}" (${r.color})`).join(', ')}` : `removed all ranks of ${u.username}`);
     lobby.refreshUser(u.id);
     lobby.emitTo(u.friends || [], 'friendsChanged', {});
     res.json({ user: summary(u) });

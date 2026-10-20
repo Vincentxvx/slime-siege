@@ -117,11 +117,20 @@
     const n = document.createElement('span'); n.className = 'plate-name'; n.textContent = p.name;
     const l = document.createElement('span'); l.className = 'plate-lvl'; l.textContent = p.isBot ? 'Bot' : `Lv ${p.level}` + (G.info.mode === 'pvp' && p.rating ? ` · ${p.rating}` : '');
     el.append(n);
-    const ranked = !!(p.rank && p.rank.text); // custom rank from the admin: a second line with the rank and level
-    el.classList.toggle('has-rank', ranked);
-    if (ranked) {
-      const r = document.createElement('span'); r.className = 'rank-tag r-' + p.rank.color; r.textContent = r.title = p.rank.text;
-      el.append(r);
+    // custom ranks from the admin: the main (first) one and "+N" on a second line with the level
+    const ranks = (p.ranks || []).filter((r) => r.text && GD.RANK_HEX.test(r.color));
+    el.classList.toggle('has-rank', ranks.length > 0);
+    if (ranks.length) {
+      const box = document.createElement('span'); box.className = 'rank-tags';
+      const r = document.createElement('span'); r.className = 'rank-tag ink-' + GD.rankInk(ranks[0].color);
+      r.style.setProperty('--rank', ranks[0].color); r.textContent = r.title = ranks[0].text;
+      box.append(r);
+      if (ranks.length > 1) {
+        const more = document.createElement('span'); more.className = 'rank-more';
+        more.textContent = '+' + (ranks.length - 1); more.title = ranks.slice(1).map((x) => x.text).join(', ');
+        box.append(more);
+      }
+      el.append(box);
     }
     el.append(l);
   }

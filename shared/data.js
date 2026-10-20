@@ -453,6 +453,25 @@
   };
   const DEFAULT_COSMETICS = ['skin_classic', 'banner_slate'];
 
+  // Custom ranks the admin gives players: up to RANKS.max short tags next to their name, in any #rrggbb color.
+  // The colors here are the swatches in the admin editor; the text check is on the server (progression.js).
+  const RANKS = {
+    max: 5, maxText: 16,
+    colors: [
+      ['Lime', '#9be15d'], ['Green', '#3fbf6a'], ['Teal', '#2ec4b6'], ['Sky blue', '#6cc7ff'], ['Blue', '#4a7dff'], ['Violet', '#b49cff'],
+      ['Purple', '#8a4fff'], ['Pink', '#ff6fa8'], ['Magenta', '#e04fd0'], ['Red', '#ff5c5c'], ['Crimson', '#b3203a'], ['Orange', '#ff9a3c'],
+      ['Gold', '#ffd35c'], ['Cream', '#fff1c1'], ['White', '#f4f1ff'], ['Silver', '#b3a8cc'], ['Brown', '#9a6a3a'], ['Black', '#1b1426'],
+    ],
+  };
+  const RANK_HEX = /^#[0-9a-f]{6}$/i;
+  // Text on a rank color: 'dark' ink on light colors, 'light' (white) on dark ones, whichever contrasts more
+  function rankInk(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+    return L > 0.2 ? 'dark' : 'light';
+  }
+
   // Quick chat in matches (preset only, so nothing needs moderating)
   const EMOTES = ['Good luck!', 'Nice!', 'Oops…', 'Incoming!', 'So close!', 'Well played'];
   const DAILY_WIN_BONUS = 50;
@@ -460,7 +479,7 @@
   return {
     COLS, ROWS, RULES, MAPS, posAt, ENEMIES, ENEMY_ORDER, TOWERS, TOWER_ORDER, DEFAULT_TOWERS,
     TARGET_MODES, towerStats, towerValue, sellValue, shotCost, growth, FORK, upgradeList, SENDS, roundWave, hpMulForRound,
-    xpForNext, levelInfo, titleFor, SKINS, BANNERS, DEFAULT_COSMETICS, EMOTES, DAILY_WIN_BONUS,
+    xpForNext, levelInfo, titleFor, SKINS, BANNERS, DEFAULT_COSMETICS, RANKS, RANK_HEX, rankInk, EMOTES, DAILY_WIN_BONUS,
     BUILTIN_MAPS, THEMES, validatePath, registerMap, SANDBOX, sandboxMap,
   };
 });

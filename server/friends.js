@@ -1,6 +1,6 @@
 // Friend list: requests by username, accept/decline/remove, live status, and direct match invites.
 // Stored on each user document: friends, friendIn (incoming requests), friendOut (sent requests) — arrays of user ids.
-const { rankOf } = require('./progression');
+const { ranksOf } = require('./progression');
 
 const MAX_FRIENDS = 100;
 const INVITE_TTL = 60000;
@@ -23,7 +23,7 @@ function mount(app, { store, lobby, authed, wrap }) {
     const order = { playing: 0, online: 0, offline: 1 };
     return {
       friends: friends
-        .map((f) => ({ id: f.id, username: f.username, banner: f.banner, rating: f.rating || 1000, rank: rankOf(f), status: status(f.id) }))
+        .map((f) => ({ id: f.id, username: f.username, banner: f.banner, rating: f.rating || 1000, ranks: ranksOf(f), status: status(f.id) }))
         .sort((a, b) => order[a.status] - order[b.status] || a.username.localeCompare(b.username)),
       incoming: incoming.map((f) => ({ id: f.id, username: f.username })),
       outgoing: outgoing.map((f) => ({ id: f.id, username: f.username })),
